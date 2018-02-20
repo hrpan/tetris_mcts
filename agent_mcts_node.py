@@ -6,9 +6,7 @@ import random
 import  sys
 sys.path.append('/home/rick/project/pyTetris/')
 from pyTetris import Tetris
-from copy import deepcopy
-import pickle
-
+from os.path import isfile
 np.set_printoptions(precision=3,suppress=True)
 
 n_actions = 6
@@ -168,7 +166,18 @@ class Agent:
 
     def save_nodes(self,save_path):
         _dict = self.node_dict
-        states = [g.getState() for g in _dict.keys()]
-        stats = [n.child_stats for n in _dict.values()]
+        states = np.stack([g.getState() for g in _dict.keys()])
+        stats = np.stack([n.child_stats for n in _dict.values()])
 
-        np.savez(save_path+'nodes.npz',np.stack(states),np.stack(stats))
+        visits = np.sum(stats[:,0],axis=1)
+
+        idx = np.where(visits > 0)
+
+        states = states[idx]
+        stats = stats[idx]
+       
+        count = 0
+        while isfile(save_path+'/nodes_%d.npz'%count):
+            count += 1
+
+        np.savez(save_path+'/nodes_%d.npz'%count,np.stack(states),np.stack(stats))
