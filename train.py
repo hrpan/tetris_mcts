@@ -19,6 +19,8 @@ parser.add_argument('--batch_size',default=32,type=int,help='Batch size (default
 parser.add_argument('--epochs',default=10,type=int,help='Training epochs (default:10)')
 parser.add_argument('--max_iters',default=100000,type=int,help='Max training iterations (default:100000)')
 parser.add_argument('--data_dir',default=['./data'],nargs='*',help='Training data directories (default:./data/ep*)')
+parser.add_argument('--nodes',default=False,help='Train on node stats instead of playouts',action='store_true')
+parser.add_argument('--node_thresh',default=0,type=float,help='Minimum visits for a node to be trained (quantile)')
 parser.add_argument('--n_episodes',default=-1,type=int,help='Number of training episodes (randomly chosen)')
 parser.add_argument('--save_loss',default=False,help='Save loss history',action='store_true')
 parser.add_argument('--save_interval',default=100,type=int,help='Number of iterations between save_loss')
@@ -32,6 +34,8 @@ new = args.new
 batch_size = args.batch_size
 epochs = args.epochs
 data_dir = args.data_dir
+nodes = args.nodes
+node_thresh = args.node_thresh
 n_episodes = args.n_episodes
 max_iters = args.max_iters
 save_loss = args.save_loss
@@ -43,27 +47,53 @@ val_interval = args.val_interval
 """ 
 LOAD DATA 
 """
+if nodes:
+    list_of_data = []
+    for _d in data_dir:
+        list_of_data += glob.glob(_d+'/nodes*')
 
-list_of_data = []
-for _d in data_dir:
-    list_of_data += glob.glob(_d+'/data*') 
+    states = []
+    stats = []
+    for file_name in list_of_data:
+        with np.load(file_name) as _f:
+            states.append(_f['arr_0'])
+            stats.append(_f['arr_1'])
 
-dfs = []
-for file_name in list_of_data:
-    df = pd.read_pickle(file_name)
-    dfs.append(df)
+    states = np.concatenate(states)
+    stats = np.concatenate(stats)
 
-if dfs:    
-    df = pd.concat(dfs,ignore_index=True)
+    node_visits = np.sum(stats[:,0],axis=1)
+    q = np.percentile(node_visits,node_thresh)
+    idx = np.where(node_visits > q)
+
+    states = states[idx]
+    stats = stats[idx]
+
+    values = np.sum(stats[:,1],axis=1) / node_visits[idx]
+    states = np.expand_dims(states,-1)
+    labels = np.expand_dims(values,-1)
+    policy = np.zeros((len(states),6))
 else:
-    exit()
+    list_of_data = []
+    for _d in data_dir:
+        list_of_data += glob.glob(_d+'/data*') 
 
-b_shape = df['board'][0].shape
+    dfs = []
+    for file_name in list_of_data:
+        df = pd.read_pickle(file_name)
+        dfs.append(df)
+
+    if dfs:    
+        df = pd.concat(dfs,ignore_index=True)
+    else:
+        exit()
+
+    b_shape = df['board'][0].shape
 
 
-states = np.expand_dims(np.stack(df['board'].values),-1)
-policy = np.stack(df['policy'].values)
-labels = np.stack(df['cum_score'].values)[:,None]
+    states = np.expand_dims(np.stack(df['board'].values),-1)
+    policy = np.stack(df['policy'].values)
+    labels = np.stack(df['cum_score'].values)[:,None]
 
 #========================
 """
