@@ -161,17 +161,9 @@ class Agent:
     def evaluate(self,node):
 
         state = node.game.getState()
+        
+        return self.evaluate_state(state)
 
-        state = np.expand_dims(state,0)
-        state = np.expand_dims(state,-1)
-
-        _r = self.model.inference(self.sess,state)
-
-        v = _r[0][0][0]
-        p = _r[1][0]
-
-        return v, p
- 
     def evaluate_state(self,state):
 
         state = np.expand_dims(state,0)
@@ -254,7 +246,6 @@ class Agent:
                     _stats[0][i] = np.sum(__stats[0])
                     _stats[1][i] = np.sum(__stats[1])
                     _stats[3][i] = _stats[1][i] / (_stats[0][i]+eps)
-                    #backup_stats(_stats,i,value)
                 else:
                     _n = Node(curr_node,i,_g)
                     self.node_dict[_g] = _n
@@ -283,7 +274,6 @@ class Agent:
         action = np.argmax(self.arrs['child_stats'][self.root][3])
         self.prob = np.zeros(n_actions)
         self.prob[action] = 1.
-        #print(action,self.prob)
         return action
 
     def get_prob(self):
@@ -347,10 +337,9 @@ class Agent:
             self.set_root(game)
         """
     def save_nodes(self,save_path):
-        """
         _dict = self.node_dict
-        states = np.stack([g.getState() for g  in _dict.keys()])
-        stats = np.stack([n.child_stats for n in _dict.values()])
+        states = np.stack([game_arr[i].getState() for i in range(self.current_node)])
+        stats = self.arrs['child_stats'][:self.current_node]
 
         visits = np.sum(stats[:,0],axis=1)
 
@@ -364,4 +353,3 @@ class Agent:
             count += 1
 
         np.savez(save_path+'/nodes_%d.npz'%count,np.stack(states),np.stack(stats))
-        """
