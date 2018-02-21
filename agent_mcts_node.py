@@ -1,5 +1,6 @@
 from model.model import Model
-from numba import jit, deferred_type
+from numba import jit, jitclass
+from numba import int32, float32
 import tensorflow as tf
 import numpy as np
 import random
@@ -14,6 +15,9 @@ n_actions = 6
 eps = 1e-7
 
 class Node:
+    """
+    DEPRECATED
+    """
     def __init__(self,parent=None,action=None,game=None):
         if parent is not None and action is not None:
             self.parent = [(parent,action)]
@@ -26,6 +30,9 @@ class Node:
 
 @jit(nopython=True)
 def select(_stats):
+    """
+    DEPRECATED
+    """
     for i in range(n_actions):
         if _stats[0][i] == 0:
             return i
@@ -45,10 +52,64 @@ def select(_stats):
 
 @jit(nopython=True)
 def backup_stats(_stats,action,value):
+    """
+    DEPRECATED
+    """
     _stats[0][action] += 1
     _stats[1][action] += value
     _stats[3][action] = _stats[1][action] / _stats[0][action]
     _stats[4][action] = max(_stats[4][action],value)
+
+@jit(nopython=True)
+def select_index(index,child,child_stats):
+    while True:
+        for i in range(n_actions):
+            if child[index][i] == 0:
+                return index
+
+        has_zero = False
+        for i in range(n_actions):
+            if child_stats[index][0][i] == 0:
+                index = child[index][i]
+                has_zero = True
+                break
+        if has_zero:
+            continue
+        _stats = child_stats[index]
+        _t = np.sum(_stats[0])
+
+        _c = np.max(_stats[4]) * np.sqrt( np.log(_t) / ( 2 * _stats[0] ) )
+        
+        _v = _stats[3] + _c 
+
+        index = child[index][np.argmax(_v)]
+    return index 
+
+@jit(nopython=True)
+def backup_index(index,n_parents,parent,child_stats,value):
+    traversed = set([(0,0)])
+    _np = n_parents[index]
+    to_traverse_idx = []
+    to_traverse_act = []
+    for i in range(_np):
+        to_traverse_idx.append(parent[index][i][0])
+        to_traverse_act.append(parent[index][i][1])
+    i = 0
+    while i < len(to_traverse_act):
+        index = to_traverse_idx[i]
+        act = to_traverse_act[i]
+        if (index,act) not in traversed:
+            traversed.add((index,act))
+            _stats = child_stats[index]
+            _stats[0][act] += 1
+            _stats[1][act] += value
+            _stats[3][act] = _stats[1][act] / _stats[0][act]
+            _stats[4][act] = max(_stats[4][act],value)
+            _np = n_parents[index]
+            for j in range(_np):
+                to_traverse_idx.append(parent[index][j][0])
+                to_traverse_act.append(parent[index][j][1])
+        i += 1
 
 class Agent:
     def __init__(self,conf,sims,tau=None):
@@ -60,6 +121,43 @@ class Agent:
         self.sess = tf.Session(config=config)
         self.model.load(self.sess)
 
+        self.current_node = 1
+        init_nodes = 10000
+        init_p_nodes = 10
+        
+        n_parents_arr = np.zeros((init_nodes,),dtype=np.uint16)
+        parent_arr = np.zeros((init_nodes,init_p_nodes,2),dtype=np.int32)
+        child_arr = np.zeros((init_nodes,n_actions),dtype=np.int32)
+        child_stats_arr = np.zeros((init_nodes,5,n_actions),dtype=np.float32)
+
+        self.arrs = {'n_parents': n_parents_arr,
+                'parent':parent_arr,
+                'child':child_arr,
+                'child_stats':child_stats_arr}
+        self.game_arr = [0,]
+        self.node_index_dict = dict()
+        self.max_parents = init_p_nodes
+        self.max_nodes = init_nodes
+    
+    def expand_nodes(self,n_nodes=10000):
+       
+        for k, arr in self.arrs.items():
+            _s = arr.shape
+            _new_s = [_ for _ in _s]
+            _new_s[0] = n_nodes
+            _temp_arr = np.zeros(_new_s,dtype=arr.dtype)
+            self.arrs[k] = np.concatenate([arr,_temp_arr])
+
+        self.max_nodes += n_nodes
+
+    def expand_parents(self,n_parents=10):
+        _arr = self.arrs['parent']
+        _s = _arr.shape
+        _new_s = [_ for _ in _s]
+        _new_s[1] = n_parents
+        _temp_arr = np.zeros(_new_s,dtype=_arr.dtype)
+        self.arrs['parent'] = np.concatenate([_arr,_temp_arr],axis=1)
+    
     def evaluate(self,node):
 
         state = node.game.getState()
@@ -73,20 +171,67 @@ class Agent:
         p = _r[1][0]
 
         return v, p
+ 
+    def evaluate_state(self,state):
+
+        state = np.expand_dims(state,0)
+        state = np.expand_dims(state,-1)
+
+        _r = self.model.inference(self.sess,state)
+
+        v = _r[0][0][0]
+        p = _r[1][0]
+
+        return v, p
+   
+    def mcts_index(self,root_index):
+        leaf_index = select_index(root_index,self.arrs['child'],self.arrs['child_stats'])
+        leaf_game = self.game_arr[leaf_index]
+        value = leaf_game.getScore() - self.game_arr[root_index].getScore()
+
+        if not leaf_game.end:
+            v, p = self.evaluate_state(leaf_game.getState())
+
+            value += v
+            for i in range(n_actions):
+                _g = leaf_game.clone()
+                _g.play(i)
+                if _g in self.node_index_dict:
+                    _n = self.node_index_dict[_g]
+                    _stats = self.arrs['child_stats'][leaf_index]
+                    __stats = self.arrs['child_stats'][_n]
+                    _stats[0][i] = np.sum(__stats[0])
+                    _stats[1][i] = np.sum(__stats[1])
+                    _stats[3][i] = _stats[1][i] / (_stats[0][i]+eps)
+                else:
+                    _n = self.new_node(_g)
+                self.add_parent(_n,(leaf_index,i))
+                self.arrs['child'][leaf_index][i] = _n
+
+        backup_index(leaf_index,
+                self.arrs['n_parents'],
+                self.arrs['parent'],
+                self.arrs['child_stats'],
+                value)
 
     def mcts(self,root_node):
-
+        """
+        DEPRECATED
+        """
         curr_node = root_node
 
         #select
+        global max_depth
+        depth = 0
         while curr_node.child:
+            depth += 1
             #n,r,p,q
             _stats = curr_node.child_stats
             
             max_i = select(_stats)
 
             curr_node = curr_node.child[max_i]
-
+        max_depth = max(depth,max_depth)
         #expand
         value = curr_node.game.getScore() - root_node.game.getScore()
         if not curr_node.game.end:
@@ -106,7 +251,10 @@ class Agent:
                     _n = self.node_dict[_g]
                     _n.parent.append((curr_node,i))
                     __stats = _n.child_stats
-                    backup_stats(_stats,i,value)
+                    _stats[0][i] = np.sum(__stats[0])
+                    _stats[1][i] = np.sum(__stats[1])
+                    _stats[3][i] = _stats[1][i] / (_stats[0][i]+eps)
+                    #backup_stats(_stats,i,value)
                 else:
                     _n = Node(curr_node,i,_g)
                     self.node_dict[_g] = _n
@@ -129,14 +277,10 @@ class Agent:
     def play(self):
 
         for i in range(self.sims):
-            self.mcts(self.root)
-        #print(self.root.child_stats)
+            self.mcts_index(self.root)
 
-        #n_temp = self.root.child_stats[0] ** (1/self.tau)
-        #self.prob = n_temp / np.sum(n_temp)
-        #action = np.random.choice(n_actions,p=self.prob)
         
-        action = np.argmax(self.root.child_stats[3])
+        action = np.argmax(self.arrs['child_stats'][self.root][3])
         self.prob = np.zeros(n_actions)
         self.prob[action] = 1.
         #print(action,self.prob)
@@ -152,21 +296,60 @@ class Agent:
     def get_stats(self):
         return self.root.child_stats
 
+    def add_parent(self,index,parent):
+
+        _np = self.arrs['n_parents'][index]
+
+        if _np + 1 > self.max_parents:
+            self.expand_parents()
+        self.arrs['n_parents'][index] += 1
+        self.arrs['parent'][index][_np] = parent
+
+
+    def new_node(self,game):
+        
+        if game in self.node_index_dict:
+
+            return self.node_index_dict[game]
+
+        else:
+            idx = self.current_node
+
+            self.node_index_dict[game] = idx
+
+            if idx + 1 > self.max_nodes:
+                self.expand_nodes()
+            
+            self.game_arr.append(game.clone())
+            self.current_node += 1
+
+            return idx
+
     def set_root(self,game):
+
+        self.root = self.new_node(game)
+
+        """
         self.root = Node(game=game)
         self.root.game = game.clone()
         if game not in self.node_dict:
             self.node_dict[game] = self.root
-
+        """
     def update_root(self,game):
+        if game in self.node_index_dict:
+            self.root = self.node_index_dict[game]
+        else:
+            self.set_root(game)
+        """
         if game in self.node_dict:
             self.root = self.node_dict[game]
         else:
             self.set_root(game)
-
+        """
     def save_nodes(self,save_path):
+        """
         _dict = self.node_dict
-        states = np.stack([g.getState() for g in _dict.keys()])
+        states = np.stack([g.getState() for g  in _dict.keys()])
         stats = np.stack([n.child_stats for n in _dict.values()])
 
         visits = np.sum(stats[:,0],axis=1)
@@ -181,3 +364,4 @@ class Agent:
             count += 1
 
         np.savez(save_path+'/nodes_%d.npz'%count,np.stack(states),np.stack(stats))
+        """
