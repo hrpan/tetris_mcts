@@ -20,12 +20,14 @@ parser.add_argument('--epochs',default=10,type=int,help='Training epochs (defaul
 parser.add_argument('--max_iters',default=100000,type=int,help='Max training iterations (default:100000)')
 parser.add_argument('--data_dir',default=['./data'],nargs='*',help='Training data directories (default:./data/ep*)')
 parser.add_argument('--nodes',default=False,help='Train on node stats instead of playouts',action='store_true')
-parser.add_argument('--node_thresh',default=0,type=float,help='Minimum visits for a node to be trained (quantile)')
-parser.add_argument('--n_episodes',default=-1,type=int,help='Number of training episodes (randomly chosen)')
+parser.add_argument('--node_thresh_q',default=0,type=float,help='Minimum visits for a node to be trained (quantile)')
+parser.add_argument('--node_thresh',default=500,type=int,help='Minimum visits for a node to be trained (number)')
+parser.add_argument('--n_episodes',default=-1,type=int,help='Number of training episodes (last n)')
 parser.add_argument('--save_loss',default=False,help='Save loss history',action='store_true')
 parser.add_argument('--save_interval',default=100,type=int,help='Number of iterations between save_loss')
 parser.add_argument('--shuffle',default=False,help='Shuffle dataset',action='store_true')
 parser.add_argument('--val_split',default=0.1,type=float,help='Split ratio for validation data')
+parser.add_argument('--val_split_max',default=2000,type=int,help='Maximum size for validation data')
 parser.add_argument('--val_interval',default=1000,type=int,help='Number of iterations between validation loss')
 args = parser.parse_args()
 
@@ -36,12 +38,14 @@ epochs = args.epochs
 data_dir = args.data_dir
 nodes = args.nodes
 node_thresh = args.node_thresh
+node_thresh_q = args.node_thresh_q
 n_episodes = args.n_episodes
 max_iters = args.max_iters
 save_loss = args.save_loss
 save_interval = args.save_interval
 shuffle = args.shuffle
 val_split = args.val_split
+val_split_max = args.val_split_max
 val_interval = args.val_interval
 
 """ 
@@ -52,24 +56,31 @@ if nodes:
     for _d in data_dir:
         list_of_data += glob.glob(_d+'/nodes*')
 
+    if not list_of_data:
+        exit()
     states = []
     stats = []
     for file_name in list_of_data:
         with np.load(file_name) as _f:
-            states.append(_f['arr_0'])
-            stats.append(_f['arr_1'])
+            _states = _f['arr_0']
+            _stats = _f['arr_1']
+            node_visits = np.sum(_stats[:,0],axis=1)
+            min_visits = np.amin(_stats[:,0],axis=1)
+            if node_thresh_q > 0 and node_thresh_q < 100:
+                q = np.percentile(node_visits,node_thresh_q)
+            else:
+                q = 0
+            idx = np.where(node_visits > max(q,node_thresh))[0]
+            idx2 = np.where(min_visits > 0)[0]
+            idx = np.intersect1d(idx,idx2,assume_unique=True)
+            states.append(_states[idx])
+            stats.append(_stats[idx])
 
     states = np.concatenate(states)
     stats = np.concatenate(stats)
-
-    node_visits = np.sum(stats[:,0],axis=1)
-    q = np.percentile(node_visits,node_thresh)
-    idx = np.where(node_visits > q)
-
-    states = states[idx]
-    stats = stats[idx]
-
-    values = np.sum(stats[:,1],axis=1) / node_visits[idx]
+    
+    #values = np.sum(stats[:,1],axis=1) / np.sum(stats[:,0],axis=1)
+    values = np.amax(stats[:,3],axis=1)
     states = np.expand_dims(states,-1)
     labels = np.expand_dims(values,-1)
     policy = np.zeros((len(states),6))
@@ -90,11 +101,9 @@ else:
 
     b_shape = df['board'][0].shape
 
-
     states = np.expand_dims(np.stack(df['board'].values),-1)
     policy = np.stack(df['policy'].values)
-    labels = np.stack(df['cum_score'].values)[:,None]
-
+    labels = np.expand_dims(np.stack(df['cum_score'].values),-1)
 #========================
 """
 Shuffle
@@ -106,14 +115,12 @@ if shuffle:
     policy = policy[indices]
     labels = labels[indices]
 
-
 #=========================
 """
 VALIDATION SET
 """
 
-n_data = int(len(states) * ( 1 - val_split ))
-
+n_data = int(max(len(states) * ( 1 - val_split ),len(states) - val_split_max))
 batch_val = [states[n_data:],labels[n_data:],policy[n_data:]]
 
 batch_train = [states[:n_data],labels[:n_data],policy[:n_data]]
@@ -142,12 +149,12 @@ with tf.Session() as sess:
         m.load(sess)
     
     for i in range(iters):
-
         idx = np.random.randint(n_data,size=batch_size)
-        batch = [batch_train[0][idx],
-                batch_train[1][idx],
-                batch_train[2][idx]]
-        
+        #batch = [batch_train[0][idx],
+        #        batch_train[1][idx],
+        #        batch_train[2][idx]]
+        batch = [_arr[idx] for _arr in batch_train]
+
         loss, loss_v, loss_p = m.train(sess,batch,i)
         
         loss_ma = decay * loss_ma + ( 1 - decay ) * loss
