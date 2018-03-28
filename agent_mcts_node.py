@@ -14,155 +14,85 @@ n_actions = 6
 
 eps = 1e-7
 
-class Node:
-    """
-    DEPRECATED
-    """
-    def __init__(self,parent=None,action=None,game=None):
-        if parent is not None and action is not None:
-            self.parent = [(parent,action)]
-        else:
-            self.parent = []
-        self.child = []
-        #n,r,p,q,max_r
-        self.child_stats = np.zeros((5,n_actions))
-        self.game = game
-
 @jit(nopython=True,cache=True)
-def select(_stats):
-    """
-    DEPRECATED
-    """
-    for i in range(n_actions):
-        if _stats[0][i] == 0:
-            return i
-
-    _t = np.sum(_stats[0])
-
-    #_var = _stats[4] / _t - ( _stats[1] / _t ) ** 2
-
-    _c = np.max(_stats[4]) * np.sqrt( np.log(_t) / ( 2 * _stats[0] ) )
-    
-    #_m = 2 * np.sqrt( np.log(_t) / _t ) / _stats[2]
-
-    #_v = _stats[3] + _c - _m
-    _v = _stats[3] + _c 
-
-    return np.argmax(_v)
-
-@jit(nopython=True,cache=True)
-def backup_stats(_stats,action,value):
-    """
-    DEPRECATED
-    """
-    _stats[0][action] += 1
-    _stats[1][action] += value
-    _stats[3][action] = _stats[1][action] / _stats[0][action]
-    _stats[4][action] = max(_stats[4][action],value)
-
-@jit(nopython=True,cache=True)
-def select_index(index,child,child_stats):
+def select_index(index,child,node_stats):
 
     trace = []
 
     while True:
 
-        _stats = child_stats[index]
-
-        _t = np.sum(_stats[0])
-
         trace.append(index)
 
         is_leaf_node = True
+
+        _child_nodes = []
         for i in range(n_actions):
             if child[index][i] != 0:
-                is_leaf_node = False
-                break
+                _child_nodes.append(child[index][i])
 
-        if is_leaf_node:
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
             break
 
         has_unvisited_node = False
-        for i in range(n_actions):
-            #if child_stats[index][0][i] == 0:
-            if child_stats[index][0][i] < np.ceil( 8 * np.log( _t + 1 ) ) + 1:
-                index = child[index][i]
+
+        _stats = np.zeros((2,len_c))
+
+        for i in range(len_c):
+            _idx = _child_nodes[i]
+            _stats[0][i] = node_stats[_idx][0]
+            _stats[1][i] = node_stats[_idx][1]
+            if node_stats[_idx][0] == 0:
+                index = _idx
                 has_unvisited_node = True
                 break
 
         if has_unvisited_node:
             continue
 
-        #_c = np.max(_stats[4]) * np.sqrt( np.log(_t) / ( 2 * _stats[0] ) )
-        _var = _stats[4] / _stats[0] - _stats[3] * _stats[3]
+        _t = np.sum(_stats[0]) 
 
-        _c = np.sqrt( 16 * _var * np.log(_t) / ( _stats[0] ) )
+        _c = 5.0 * np.sqrt( np.log(_t) / _stats[0] )
 
-        _v = _stats[3] + _c 
+        _q = _stats[1] / _stats[0]
+
+        _v = _q + _c 
         
         _a = np.argmax(_v)
 
-        index = child[index][_a]
+        index = _child_nodes[_a]
 
     return trace
 
 @jit(nopython=True,cache=True)
-def backup_index(index,n_parents,parent,child_stats,value):
-    traversed = set([(0,0)])
-    _np = n_parents[index]
-    to_traverse_idx = []
-    to_traverse_act = []
-    for i in range(_np):
-        to_traverse_idx.append(parent[index][i][0])
-        to_traverse_act.append(parent[index][i][1])
-    i = 0
-    while i < len(to_traverse_act):
-        index = to_traverse_idx[i]
-        act = to_traverse_act[i]
-        if (index,act) not in traversed:
-            traversed.add((index,act))
-            _stats = child_stats[index]
-            _stats[0][act] += 1
-            _stats[1][act] += value
-            _stats[3][act] = _stats[1][act] / _stats[0][act]
-            #_stats[4][act] = max(_stats[4][act],value)
-            _stats[4][act] += value * value
-            _np = n_parents[index]
-            for j in range(_np):
-                to_traverse_idx.append(parent[index][j][0])
-                to_traverse_act.append(parent[index][j][1])
-        i += 1
-
-@jit(nopython=True,cache=True)
-def backup_trace(trace,n_parents,parent,child_stats,value):
+def backup_trace(trace,node_stats,value):
 
     for idx in trace:
-        for i in range(n_parents[idx]):
-            _i = parent[idx][i][0]
-            _a = parent[idx][i][1]
-            child_stats[_i][0][_a] += 1
-            child_stats[_i][1][_a] += value
-            child_stats[_i][3][_a] = child_stats[_i][1][_a] / child_stats[_i][0][_a]
-            child_stats[_i][4][_a] += value * value
+        v = value - node_stats[idx][2] 
+        node_stats[idx][0] += 1
+        node_stats[idx][1] += v
 
 @jit(nopython=True,cache=True)
-def copy_from_child(stats,action,curr,child):
-    stats[curr][0][action] = np.sum(stats[child][0])
-    stats[curr][1][action] = np.sum(stats[child][1])
-    stats[curr][3][action] = stats[curr][1][action] / (stats[curr][0][action] + eps)
-    stats[curr][4][action] = np.sum(stats[child][4])
+def get_all_childs(index,child):
+    
+    to_traverse = [index,]
 
-@jit(nopython=True,cache=True)
-def add_parent_jit(index,index_p,n_parents,parent,max_parents):
+    traversed = []
 
-        parent[index][n_parents[index]] = index_p
-        n_parents[index] += 1
+    i = 0
+    while i < len(to_traverse):
+        idx = to_traverse[i]
+        if idx not in traversed:
+            to_traverse += list(child[idx])   
+            traversed.append(idx)
+        i += 1
+    return set(to_traverse)
 
-        return n_parents[index] == max_parents
-            
 class Agent:
-    def __init__(self,conf,sims,tau=None):
+    def __init__(self,conf,sims,tau=None,gamma=0.99):
         self.sims = sims
+        self.gamma = gamma
         self.model = Model()
         self.node_dict = dict()
         config = tf.ConfigProto()
@@ -171,19 +101,16 @@ class Agent:
         self.model.load(self.sess)
 
         self.current_node = 1
-        init_nodes = 1000000
+        init_nodes = 500000
         init_p_nodes = 100
         
-        n_parents_arr = np.zeros((init_nodes,),dtype=np.uint16)
-        parent_arr = np.zeros((init_nodes,init_p_nodes,2),dtype=np.int32)
         child_arr = np.zeros((init_nodes,n_actions),dtype=np.int32)
-        child_stats_arr = np.zeros((init_nodes,5,n_actions),dtype=np.float32)
+        node_stats_arr = np.zeros((init_nodes,3),dtype=np.float32)
 
-        self.arrs = {'n_parents': n_parents_arr,
-                'parent':parent_arr,
-                'child':child_arr,
-                'child_stats':child_stats_arr}
-        self.game_arr = [0,]
+        self.arrs = {'child':child_arr,'node_stats':node_stats_arr}
+        self.game_arr = [None] * init_nodes
+        self.available = [i for i in range(1,init_nodes)]
+        self.occupied = [0]
         self.node_index_dict = dict()
         self.max_parents = init_p_nodes
         self.max_nodes = init_nodes
@@ -196,18 +123,11 @@ class Agent:
             _new_s[0] = n_nodes
             _temp_arr = np.zeros(_new_s,dtype=arr.dtype)
             self.arrs[k] = np.concatenate([arr,_temp_arr])
-
+        self.game_arr += [None] * n_nodes
+        self.available += [i for i in range(self.max_nodes,self.max_nodes+n_nodes)]
+        #self.occupied_arr += [False] * n_nodes
         self.max_nodes += n_nodes
 
-    def expand_parents(self,n_parents=10):
-        print('expanding parents...')
-        _arr = self.arrs['parent']
-        _s = _arr.shape
-        _new_s = [_ for _ in _s]
-        _new_s[1] = n_parents
-        _temp_arr = np.zeros(_new_s,dtype=_arr.dtype)
-        self.arrs['parent'] = np.concatenate([_arr,_temp_arr],axis=1)
-    
     def evaluate(self,node):
 
         state = node.game.getState()
@@ -225,16 +145,16 @@ class Agent:
         p = _r[1][0]
 
         return v, p
-   
+
     def mcts_index(self,root_index):
-        trace = select_index(root_index,self.arrs['child'],self.arrs['child_stats'])
+        trace = select_index(root_index,self.arrs['child'],self.arrs['node_stats'])
 
         leaf_index = trace[-1]
         #leaf_index = select_index(root_index,self.arrs['child'],self.arrs['child_stats'])
 
         leaf_game = self.game_arr[leaf_index]
 
-        value = leaf_game.getScore() - self.game_arr[root_index].getScore()
+        value = leaf_game.getScore() #- self.game_arr[root_index].getScore()
 
 
         if not leaf_game.end:
@@ -247,88 +167,36 @@ class Agent:
                 _g = leaf_game.clone()
                 _g.play(i)
                 _n = self.new_node(_g)
-                copy_from_child(self.arrs['child_stats'],i,leaf_index,_n)
-                self.add_parent(_n,(leaf_index,i))
+
                 self.arrs['child'][leaf_index][i] = _n
-        """
-        backup_index(leaf_index,
-                self.arrs['n_parents'],
-                self.arrs['parent'],
-                self.arrs['child_stats'],
-                value)
-        """
-        backup_trace(trace,
-                self.arrs['n_parents'],
-                self.arrs['parent'],
-                self.arrs['child_stats'],
-                value)
-    def mcts(self,root_node):
-        """
-        DEPRECATED
-        """
-        curr_node = root_node
-
-        #select
-        global max_depth
-        depth = 0
-        while curr_node.child:
-            depth += 1
-            #n,r,p,q
-            _stats = curr_node.child_stats
+                self.arrs['node_stats'][_n][2] = _g.getScore()
             
-            max_i = select(_stats)
-
-            curr_node = curr_node.child[max_i]
-        max_depth = max(depth,max_depth)
-        #expand
-        value = curr_node.game.getScore() - root_node.game.getScore()
-        if not curr_node.game.end:
-
-            v, policy = self.evaluate(curr_node)
-
-            value += v
-            
-            _stats = curr_node.child_stats
-            _stats[2] = policy
-
-            g_childs = curr_node.child
-            for i in range(n_actions):
-                _g = curr_node.game.clone()
-                _g.play(i)
-                if _g in self.node_dict:
-                    _n = self.node_dict[_g]
-                    _n.parent.append((curr_node,i))
-                    __stats = _n.child_stats
-                    _stats[0][i] = np.sum(__stats[0])
-                    _stats[1][i] = np.sum(__stats[1])
-                    _stats[3][i] = _stats[1][i] / (_stats[0][i]+eps)
-                else:
-                    _n = Node(curr_node,i,_g)
-                    self.node_dict[_g] = _n
-                g_childs.append(_n)
-
-            
-
-        #backup
-        backup_list = curr_node.parent.copy()
-        traversed = set()
-        i = 0
-        while i < len(backup_list):
-            p, a = backup_list[i]
-            if (id(p),a) not in traversed:
-                traversed.add((id(p),a))
-                backup_stats(p.child_stats,a,value)
-                backup_list += p.parent
-            i += 1
+        
+        backup_trace(trace,self.arrs['node_stats'],value)
 
     def play(self):
 
         for i in range(self.sims):
             self.mcts_index(self.root)
-        action = np.argmax(self.arrs['child_stats'][self.root][3])
+        #print(len(get_all_childs(self.root,self.arrs['child'])),self.current_node)
+        self.stats = self.compute_stats()
+        action = np.argmax(self.stats[3])
         self.prob = np.zeros(n_actions)
         self.prob[action] = 1.
         return action
+
+    def compute_stats(self):
+        _stats = np.zeros((4,n_actions))
+        _childs = self.arrs['child'][self.root]
+        _ns = self.arrs['node_stats']
+        for i in range(n_actions):
+            _idx = self.arrs['child'][self.root][i]
+            _stats[0][i] = _ns[_idx][0]
+            _stats[1][i] = _ns[_idx][1]
+            _stats[2][i] = 0
+            _stats[3][i] = _ns[_idx][1] / _ns[_idx][0]
+        
+        return _stats
 
     def get_prob(self):
         return self.prob
@@ -338,23 +206,8 @@ class Agent:
         return np.sum(_stats[1])/np.sum(_stats[0])
 
     def get_stats(self):
-        return self.arrs['child_stats'][self.root]
-
-    def add_parent(self,index,parent):
-        """
-        _np = self.arrs['n_parents'][index]
-
-        if _np + 1 > self.max_parents:
-            self.expand_parents()
-        self.arrs['n_parents'][index] += 1
-        self.arrs['parent'][index][_np] = parent
-        """
-        if add_parent_jit(index,
-                parent,
-                self.arrs['n_parents'],
-                self.arrs['parent'],
-                self.max_parents):
-            self.expand_parents()
+       
+        return self.stats
 
     def new_node(self,game):
         
@@ -363,40 +216,97 @@ class Agent:
             return self.node_index_dict[game]
 
         else:
-            idx = self.current_node
+            #idx = self.current_node
+            """
+            try:
+                idx = self.occupied_arr.index(False)
+            except ValueError:
+                self.remove_nodes()
+                try:
+                    idx = self.occupied_arr.index(False)
+                except:
+                    self.expand_nodes()
+                    idx = self.occupied_arr.index(False)
+            """
 
-            self.node_index_dict[game] = idx
+            if self.available:
+                idx = self.available.pop()
+            else:
+                self.remove_nodes()
+                if self.available:
+                    idx = self.available.pop()
+                else:
+                    self.expand_nodes()
+                    idx = self.available.pop()
 
-            if idx + 1 > self.max_nodes:
-                self.expand_nodes()
+            _g = game.clone()
+
+            self.node_index_dict[_g] = idx
+
+            #if idx + 1 > self.max_nodes:
+            #    self.expand_nodes()
             
-            self.game_arr.append(game.clone())
-            self.current_node += 1
+            #self.game_arr.append(game.clone())
+            #self.current_node += 1
+            self.game_arr[idx] = _g
+            #self.occupied_arr[idx] = True
+            self.occupied.append(idx)
 
             return idx
+
+    def remove_nodes(self):
+        
+        _c = get_all_childs(self.root,self.arrs['child'])
+        """ 
+        for i in range(1,self.max_nodes):
+
+            if not self.occupied_arr[i]:
+                continue
+
+            if not i in _c:
+                
+                _g = self.game_arr[i]
+
+                del self.node_index_dict[_g]
+
+                self.game_arr[i] = None
+
+                for k, arr in self.arrs.items():
+
+                    arr[i] = 0
+                
+                self.occupied_arr[i] = False
+        """
+        for idx in self.occupied:
+            if idx not in _c:
+                _g = self.game_arr[idx]
+
+                del self.node_index_dict[_g]
+
+                self.game_arr[idx] = None
+
+                for k, arr in self.arrs.items():
+
+                    arr[idx] = 0
+                
+                self.occupied.remove(idx)
+                self.available.append(idx)
+                #self.occupied_arr[i] = False
 
     def set_root(self,game):
 
         self.root = self.new_node(game)
 
-        """
-        self.root = Node(game=game)
-        self.root.game = game.clone()
-        if game not in self.node_dict:
-            self.node_dict[game] = self.root
-        """
     def update_root(self,game):
         if game in self.node_index_dict:
             self.root = self.node_index_dict[game]
         else:
             self.set_root(game)
-        """
-        if game in self.node_dict:
-            self.root = self.node_dict[game]
-        else:
-            self.set_root(game)
-        """
+
+        #self.remove_nodes()
+
     def save_nodes(self,save_path):
+        """
         _dict = self.node_dict
         states = np.stack([self.game_arr[i].getState() for i in range(1,self.current_node)])
         stats = self.arrs['child_stats'][1:self.current_node]
@@ -413,3 +323,4 @@ class Agent:
             count += 1
 
         np.savez(save_path+'/nodes_%d.npz'%count,np.stack(states),np.stack(stats))
+        """
