@@ -80,4 +80,14 @@ def get_all_childs(index,child):
         i += 1
     return set(to_traverse)
 
+@jit(nopython=True,cache=True)
+def choose_action(p):
+    _cdf = p.cumsum()
+
+    rnd = np.random.rand()
+
+    _a = np.searchsorted(_cdf,rnd)
+
+    return _a
+
 
