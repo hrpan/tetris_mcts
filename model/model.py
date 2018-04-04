@@ -57,30 +57,36 @@ class Model:
 
 
 
-        n_filters = 64
-        k_size = 3
+        n_filters = 16
+        k_size = 4
         act = tf.nn.relu
-        y = tf.layers.conv2d(self.state,filters=n_filters,kernel_size=k_size,activation=act,name='conv1')
-#        y = tf.layers.batch_normalization(y,training=self.training)
-        y = tf.layers.conv2d(y,filters=n_filters,kernel_size=k_size,activation=act,name='conv2')
-#        y = tf.layers.batch_normalization(y,training=self.training)
-#        y = tf.layers.conv2d(y,filters=n_filters,kernel_size=k_size,activation=act,name='conv3')
+
+        y = self.state
+        #y = tf.layers.conv2d(y,filters=n_filters,kernel_size=k_size,activation=act,name='conv1')
+        #y = tf.layers.batch_normalization(y,training=self.training)
+        #y = tf.layers.conv2d(y,filters=n_filters,kernel_size=k_size,activation=act,name='conv2')
+        #y = tf.layers.batch_normalization(y,training=self.training)
         y = tf.layers.flatten(y)
+        #y = tf.layers.dense(y,256,activation=tf.nn.relu)
         """
         for i in range(3):
             y = residual_block(y,k_size,self.training)
         """
         
         self.value_pred = tf.layers.dense(y,1,activation=tf.exp)
+        self.class_pred = tf.nn.softmax(y,name='class_pred')
         #self.value_pred = tf.layers.dense(y,1,activation=tf.nn.relu)
+        #self.value_pred = tf.layers.dense(y,1)
         tf.identity(self.value_pred,name='value_pred')
         self.policy_logit = tf.layers.dense(y,6,name='policy_logit')
         self.policy_pred = tf.nn.softmax(self.policy_logit,name='policy_pred')
 
-        loss_v = tf.losses.mean_squared_error(self.value_true,self.value_pred)
+        loss_v = tf.constant(0.)
+        #loss_v = tf.losses.mean_squared_error(self.value_true,self.value_pred)
         self.loss_value = tf.identity(loss_v,name='loss_value')
-        #loss_p = tf.losses.softmax_cross_entropy(self.policy_true,self.policy_logit)
-        loss_p = tf.constant(0.)
+
+        loss_p = tf.losses.softmax_cross_entropy(self.policy_true,self.policy_logit)
+        #loss_p = tf.constant(0.)
         self.loss_policy = tf.identity(loss_p,name='loss_policy')
 
 
@@ -90,10 +96,10 @@ class Model:
 #        self.optimizer = tf.train.RMSPropOptimizer(0.01)
 #        self.optimizer = tf.train.GradientDescentOptimizer(0.01)
         self.g_step = tf.placeholder(tf.int32,name='g_step')
-        lr_init = 0.001
-        self.lr = tf.train.exponential_decay(lr_init,self.g_step,10000,0.1,staircase=True,name='lr')
-#        self.lr = tf.constant(lr_init,name='lr')
-#        self.optimizer = tf.train.MomentumOptimizer(self.lr,0.9,use_nesterov=True)
+        lr_init = 0.01
+#        self.lr = tf.train.exponential_decay(lr_init,self.g_step,30000,0.5,staircase=True,name='lr')
+        self.lr = tf.constant(lr_init,name='lr')
+#        self.optimizer = tf.train.MomentumOptimizer(self.lr,0.99,use_nesterov=True)
 #        self.optimizer = tf.train.GradientDescentOptimizer(self.lr)
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -107,7 +113,10 @@ class Model:
                 self.policy_true:batch[2],
                 self.training:True, 
                 self.g_step:step}
-        ops = [self.loss,self.loss_value,self.loss_policy,self.train_step]
+        ops = [self.loss,
+                self.loss_value,
+                self.loss_policy,
+                self.train_step]
         _loss, _loss_val, _loss_pol, _ = sess.run(ops,feed_dict=_dict)
         return (_loss,_loss_val,_loss_pol)
 
@@ -121,9 +130,13 @@ class Model:
         return (_loss,_loss_val,_loss_pol)
 
     def inference(self,sess,batch):
-        _dict = {self.state:batch,self.training:False}
-        with self.graph.as_default():
-            _r = sess.run([self.value_pred,self.policy_pred],feed_dict=_dict)
+        _dict = {self.state:batch,
+                self.training:False}
+        ops = [self.value_pred,
+                self.policy_pred,
+                self.class_pred] 
+        #with self.graph.as_default():
+        _r = sess.run(ops,feed_dict=_dict)
         return _r
 
     def save(self,sess):
@@ -147,6 +160,7 @@ class Model:
             self.policy_true = self.graph.get_tensor_by_name('policy_true:0')
             self.value_pred = self.graph.get_tensor_by_name('value_pred:0')
             self.policy_pred = self.graph.get_tensor_by_name('policy_pred:0')
+            self.class_pred = self.graph.get_tensor_by_name('class_pred:0')
             self.training = self.graph.get_tensor_by_name('training:0')
             self.lr = self.graph.get_tensor_by_name('lr:0')
 
