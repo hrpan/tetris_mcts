@@ -1,33 +1,73 @@
 import numpy as np
 import sys
+sys.path.append('./model')
 from core import get_all_childs
 
 n_actions = 6
 
 class Agent:
-    def __init__(self,sims,init_nodes=1000000):
+
+    def __init__(self,sims,init_nodes=100000,backend='tensorflow'):
 
         self.sims = sims
         
         self.init_nodes = init_nodes
-        
-        child_arr = np.zeros((init_nodes,n_actions),dtype=np.int32)
-        node_stats_arr = np.zeros((init_nodes,3),dtype=np.float32)
+        self.backend = backend
+
+        self.init_array()
+        self.init_model()
+
+    def init_array(self):
+
+        child_arr = np.zeros((self.init_nodes,n_actions),dtype=np.int32)
+        node_stats_arr = np.zeros((self.init_nodes,3),dtype=np.float32)
 
         self.arrs = {
                 'child':child_arr,
                 'node_stats':node_stats_arr,
                 }
 
-        self.game_arr = [None] * init_nodes
+        self.game_arr = [None] * self.init_nodes
 
-        self.available = [i for i in range(1,init_nodes)]
-
+        self.available = [i for i in range(1,self.init_nodes)]
         self.occupied = [0]
 
         self.node_index_dict = dict()
 
         self.max_nodes = init_nodes
+
+    def init_model(self):
+
+        if self.backend == 'tensorflow':
+            from model import Model()
+            import tensorflow as tf
+
+            self.sess = tf.Session()
+            
+            self.model = Model()
+            self.model.load(self.sess)
+
+        elif self.backend == 'pytorch':
+            from model_pytorch import Model()
+            self.model = Model()
+            self.model.load()
+
+
+    def evaluate(self,node):
+
+        state = node.game.getState()
+
+        return self.evaluate_state(state)
+
+    def evaluate_state(self,state):
+
+        if self.backend == 'tensorflow':
+            v, p = m.inference(self.sess,state[None,:,:,None])
+            
+        elif self.backend == 'pytorch':
+            v, p = m.inference(state[None,None,:,:])
+
+        return v[0][0], p[0]
 
     def expand_nodes(self,n_nodes=10000):
 
