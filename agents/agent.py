@@ -7,7 +7,7 @@ n_actions = 6
 
 class Agent:
 
-    def __init__(self,sims,init_nodes=100000,backend='tensorflow'):
+    def __init__(self,sims,init_nodes=500000,backend='tensorflow'):
 
         self.sims = sims
         
@@ -101,7 +101,7 @@ class Agent:
             else:
                 self.remove_nodes()
                 if self.available:
-                    ifx = self.available.pop()
+                    idx = self.available.pop()
                 else:
                     self.expand_nodes()
                     idx = self.available.pop()
