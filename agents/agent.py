@@ -46,12 +46,18 @@ class Agent:
             
             self.model = Model()
             self.model.load(self.sess)
+            
+            self.inference = lambda state: self.model.inference(self.sess,state[None,:,:,None])
 
         elif self.backend == 'pytorch':
             from model.model_pytorch import Model
             self.model = Model()
             self.model.load()
 
+            self.inference = lambda state: self.model.inference(state[None,None,:,:])
+
+        else:
+            self.model = None
 
     def evaluate(self,node):
 
@@ -61,11 +67,8 @@ class Agent:
 
     def evaluate_state(self,state):
 
-        if self.backend == 'tensorflow':
-            v, p = self.model.inference(self.sess,state[None,:,:,None])
+        v, p = self.inference(state)
             
-        elif self.backend == 'pytorch':
-            v, p = self.model.inference(state[None,None,:,:])
 
         return v[0][0], p[0]
 
