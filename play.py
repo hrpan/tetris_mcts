@@ -4,7 +4,10 @@ import sys
 sys.path.append('../../pyTetris')
 from pyTetris import Tetris
 #from agent_mcts import Agent
-from agent_mcts_node import Agent
+#from agent_mcts_node import Agent
+#from agent_mcts_sim import Agent
+from agents.FullSim import FullSim as Agent
+#from agent_mcts_vanilla import Agent
 import numpy as np
 import argparse
 import random
@@ -18,6 +21,7 @@ parser.add_argument('--interactive',default=False,help='Text interactive interfa
 parser.add_argument('--selfplay',default=False,help='Agent selfplay',action='store_true')
 parser.add_argument('--app',default=1,type=int,help='Actions-per-drop')
 parser.add_argument('--cycle',default=-1,type=int,help='Number of cycle')
+parser.add_argument('--gamma',default=0.99,type=float,help='Discount factor')
 parser.add_argument('--ngames',default=50,type=int,help='Number of episodes to play')
 parser.add_argument('--mcts_sims',default=500,type=int,help='Number of MCTS sims')
 parser.add_argument('--mcts_const',default=5.0,type=float,help='PUCT constant')
@@ -26,13 +30,13 @@ parser.add_argument('--printboard',default=False,help='Print board',action='stor
 parser.add_argument('--save',default=False,help='Save self-play episodes',action='store_true')
 parser.add_argument('--save_dir',default='./data/',type=str,help='Directory for save')
 parser.add_argument('--save_file',default='data',type=str,help='Filename to save')
-parser.add_argument('--save_nodes',default=False,help='Save MCTS node stats',action='store_true')
 args = parser.parse_args()
 
 interactive = args.interactive
 selfplay = args.selfplay
 app = args.app
 cycle = args.cycle
+gamma = args.gamma
 ngames = args.ngames
 mcts_sims = args.mcts_sims
 mcts_const = args.mcts_const
@@ -41,7 +45,6 @@ printboard = args.printboard
 save = args.save
 save_dir = args.save_dir
 save_file = args.save_file
-save_nodes = args.save_nodes
 """
 SOME INITS
 """
@@ -80,8 +83,7 @@ while True:
                     'child_stats':agent.get_stats()}
             df_ep = df_ep.append(_dict,ignore_index=True)
 
-    game.play(action) 
-
+    game.play(action)
     
     if selfplay:
         agent.update_root(game)
@@ -112,8 +114,6 @@ while True:
 sys.stdout.write('\n')
 sys.stdout.flush()
 
-if save_nodes and selfplay:
-    agent.save_nodes(save_dir)
 
 if save:
     df['cycle']=cycle
