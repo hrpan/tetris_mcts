@@ -5,6 +5,8 @@ import sys
 from numba import jit
 from numba import int32, float32
 
+n_actions = 6
+
 @jit(nopython=True,cache=True)
 def select_index(index,child,node_stats):
 

@@ -1,7 +1,7 @@
 import numpy as np
 import sys
-sys.path.append('./model')
-from core import get_all_childs
+#sys.path.append('./model')
+from agents.core import get_all_childs
 
 n_actions = 6
 
@@ -34,12 +34,12 @@ class Agent:
 
         self.node_index_dict = dict()
 
-        self.max_nodes = init_nodes
+        self.max_nodes = self.init_nodes
 
     def init_model(self):
 
         if self.backend == 'tensorflow':
-            from model import Model()
+            from model.model import Model
             import tensorflow as tf
 
             self.sess = tf.Session()
@@ -48,7 +48,7 @@ class Agent:
             self.model.load(self.sess)
 
         elif self.backend == 'pytorch':
-            from model_pytorch import Model()
+            from model.model_pytorch import Model
             self.model = Model()
             self.model.load()
 
@@ -62,10 +62,10 @@ class Agent:
     def evaluate_state(self,state):
 
         if self.backend == 'tensorflow':
-            v, p = m.inference(self.sess,state[None,:,:,None])
+            v, p = self.model.inference(self.sess,state[None,:,:,None])
             
         elif self.backend == 'pytorch':
-            v, p = m.inference(state[None,None,:,:])
+            v, p = self.model.inference(state[None,None,:,:])
 
         return v[0][0], p[0]
 
