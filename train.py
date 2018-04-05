@@ -1,5 +1,3 @@
-from model.model import Model
-import tensorflow as tf
 import numpy as np
 import pickle 
 import os
@@ -25,8 +23,8 @@ parser.add_argument('--save_loss',default=False,help='Save loss history',action=
 parser.add_argument('--save_interval',default=100,type=int,help='Number of iterations between save_loss')
 parser.add_argument('--shuffle',default=False,help='Shuffle dataset',action='store_true')
 parser.add_argument('--val_split',default=0.1,type=float,help='Split ratio for validation data')
-parser.add_argument('--val_split_max',default=2000,type=int,help='Maximum size for validation data')
-parser.add_argument('--val_interval',default=1000,type=int,help='Number of iterations between validation loss')
+parser.add_argument('--val_split_max',default=10000,type=int,help='Maximum size for validation data')
+#parser.add_argument('--val_interval',default=1000,type=int,help='Number of iterations between validation loss')
 args = parser.parse_args()
 
 backend = args.backend
@@ -42,7 +40,7 @@ save_interval = args.save_interval
 shuffle = args.shuffle
 val_split = args.val_split
 val_split_max = args.val_split_max
-val_interval = args.val_interval
+#val_interval = args.val_interval
 
 #========================
 """ 
@@ -106,7 +104,7 @@ if backend == 'pytorch':
         m.load()
     train_step = lambda batch, step: m.train(batch)
     compute_loss = lambda batch: m.compute_loss(batch)
-
+    scheduler_step = lambda val_loss: m.update_scheduler(val_loss)
 elif backend == 'tensorflow':
     from model.model import Model
     import tensorflow as tf
@@ -119,10 +117,14 @@ elif backend == 'tensorflow':
         m.load(sess)
     train_step = lambda batch, step: m.train(sess,batch,step)
     compute_loss = lambda batch: m.compute_loss(sess,batch)
-
+    scheduler_step = lambda val_loss: None
 #=========================
 
-iters = int(min(epochs*n_data//batch_size,max_iters))
+iters_per_epoch = n_data//batch_size
+
+iters = int(min( epochs * iters_per_epoch, max_iters))
+
+val_interval = iters_per_epoch
 
 loss_ma = 0
 decay = 0.99
@@ -134,6 +136,10 @@ if save_loss:
     hist_shape = (int(ceil(iters/save_interval)),6)
     loss_history = np.empty(hist_shape)
 
+#=========================
+"""
+TRAINING ITERATION
+"""
 
 for i in range(iters):
     idx = np.random.randint(n_data,size=batch_size)
@@ -146,7 +152,8 @@ for i in range(iters):
     
     if i % val_interval == 0 and val_split > 0:
         loss_val, loss_val_v, loss_val_p = compute_loss(batch_val)
-
+        scheduler_step(loss_val)
+        
     sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i,iters,loss_ma,loss_val))
     sys.stdout.flush()
         
