@@ -16,14 +16,14 @@ parser.add_argument('--cycle',default=-1,type=int,help='Cycle (default:-1)')
 parser.add_argument('--new',default=False,help='Create a new model instead of training the old one',action='store_true')
 parser.add_argument('--batch_size',default=32,type=int,help='Batch size (default:32)')
 parser.add_argument('--epochs',default=10,type=int,help='Training epochs (default:10)')
-parser.add_argument('--max_iters',default=100000,type=int,help='Max training iterations (default:100000)')
+parser.add_argument('--max_iters',default=-1,type=int,help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--data_dir',default=['./data'],nargs='*',help='Training data directories (default:./data/ep*)')
 parser.add_argument('--gamma',default=0.99,type=float,help='Gamma for discounted rewards')
 parser.add_argument('--save_loss',default=False,help='Save loss history',action='store_true')
 parser.add_argument('--save_interval',default=100,type=int,help='Number of iterations between save_loss')
 parser.add_argument('--shuffle',default=False,help='Shuffle dataset',action='store_true')
 parser.add_argument('--val_split',default=0.1,type=float,help='Split ratio for validation data')
-parser.add_argument('--val_split_max',default=10000,type=int,help='Maximum size for validation data')
+parser.add_argument('--val_split_max',default=-1,type=int,help='Maximum size for validation data (negative for unlimited)')
 #parser.add_argument('--val_interval',default=1000,type=int,help='Number of iterations between validation loss')
 args = parser.parse_args()
 
@@ -86,8 +86,11 @@ if shuffle:
 """
 VALIDATION SET
 """
+if val_split_max >= 0:
+    n_data = int(max(len(states) * ( 1 - val_split ),len(states) - val_split_max))
+else:
+    n_data = int(len(state) * ( 1 - val_split ))
 
-n_data = int(max(len(states) * ( 1 - val_split ),len(states) - val_split_max))
 batch_val = [states[n_data:],labels[n_data:],policy[n_data:]]
 
 batch_train = [states[:n_data],labels[:n_data],policy[:n_data]]
@@ -122,7 +125,10 @@ elif backend == 'tensorflow':
 
 iters_per_epoch = n_data//batch_size
 
-iters = int(min( epochs * iters_per_epoch, max_iters))
+if max_iters >= 0:
+    iters = int(min( epochs * iters_per_epoch, max_iters))
+else:
+    iters = int(epochs * iters_per_epoch)
 
 val_interval = iters_per_epoch
 
