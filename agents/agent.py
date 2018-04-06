@@ -161,21 +161,18 @@ class Agent:
 
         _c = get_all_childs(self.root,self.arrs['child'])
 
-        for idx in self.occupied:
+        self.occupied = list(_c)
 
-            if idx not in _c:
+        self.available = list(set(range(self.max_nodes)) - _c)
 
-                _g = self.game_arr[idx]
+        for idx in self.available:
+            _g = self.game_arr[idx]
 
-                del self.node_index_dict[_g]
+            del self.node_index_dict[_g]
 
-                self.game_arr[idx] = None
+            self.game_arr[idx] = None
 
-                for k, arr in self.arrs.items():
-                    arr[idx] = 0
-
-                self.occupied.remove(idx)
-                self.available.append(idx)
+            self.arrs['child'][idx] = 0
 
     def set_root(self,game):
 
