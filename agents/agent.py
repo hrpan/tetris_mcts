@@ -20,7 +20,7 @@ class Agent:
     def init_array(self):
 
         child_arr = np.zeros((self.init_nodes,n_actions),dtype=np.int32)
-        node_stats_arr = np.zeros((self.init_nodes,3),dtype=np.float32)
+        node_stats_arr = np.zeros((self.init_nodes,5),dtype=np.float32)
 
         self.arrs = {
                 'child':child_arr,
@@ -135,7 +135,7 @@ class Agent:
 
     def compute_stats(self):
 
-        _stats = np.zeros((4,n_actions))
+        _stats = np.zeros((6,n_actions))
 
         _childs = self.arrs['child'][self.root]
         _ns = self.arrs['node_stats']
@@ -146,6 +146,8 @@ class Agent:
             _stats[1][i] = _ns[_idx][1]
             _stats[2][i] = 0
             _stats[3][i] = _ns[_idx][1] / _ns[_idx][0]
+            _stats[4][i] = _ns[_idx][3]
+            _stats[5][i] = _ns[_idx][4]
 
         return _stats
 
@@ -173,6 +175,7 @@ class Agent:
             self.game_arr[idx] = None
 
             self.arrs['child'][idx] = 0
+            self.arrs['node_stats'][idx] = 0
 
     def set_root(self,game):
 

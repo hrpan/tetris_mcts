@@ -32,10 +32,13 @@ def select_index(index,child,node_stats):
 
         _stats = np.zeros((2,len_c))
 
+        _max = 1.0
+
         for i in range(len_c):
             _idx = _child_nodes[i]
             _stats[0][i] = node_stats[_idx][0]
             _stats[1][i] = node_stats[_idx][1]
+            _max = max(_max,node_stats[_idx][4])
             if node_stats[_idx][0] == 0:
                 index = _idx
                 has_unvisited_node = True
@@ -46,7 +49,7 @@ def select_index(index,child,node_stats):
 
         _t = np.sum(_stats[0]) 
 
-        _c = 1.0 * np.sqrt( np.log(_t) / _stats[0] )
+        _c = _max * np.sqrt( np.log(_t) / _stats[0] )
 
         _q = _stats[1] / _stats[0]
 
@@ -65,6 +68,8 @@ def backup_trace(trace,node_stats,value):
         v = value - node_stats[idx][2] 
         node_stats[idx][0] += 1
         node_stats[idx][1] += v
+        node_stats[idx][3] += v * v
+        node_stats[idx][4] = max(v,node_stats[idx][4])
 
 @jit(nopython=True,cache=True)
 def get_all_childs(index,child):
