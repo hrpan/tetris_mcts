@@ -4,9 +4,6 @@ import pandas as pd
 import argparse
 import glob
 import time
-import tensorflow as tf
-sys.path.append('./model')
-from model import Model
 from tkinter import *
 
 """
@@ -15,17 +12,31 @@ ARG PARSE
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--data_paths',default=['./data'],nargs='*',help='Data paths')
-
+parser.add_argument('--backend',default='pytorch',help='DL backend')
 args = parser.parse_args()
 
 data_paths = args.data_paths
+backend = args.backend
 
 """
 MODEL INIT
 """
-sess = tf.Session()
-m = Model()
-m.load(sess)
+sys.path.append('./model')
+if backend == 'tensorflow':
+
+    import tensorflow as tf
+    from model import Model
+
+    sess = tf.Session()
+    m = Model()
+    m.load(sess)
+
+elif backend == 'pytorch':
+
+    from model_pytorch import Model
+
+    m = Model()
+    m.load()
 
 
 class Data:
@@ -125,16 +136,26 @@ if __name__ == '__main__':
     policy_canvas_2.grid(row=3,column=0)
     value_label = Label(canvas_frame_2)
     value_label.grid(row=4,column=0)
+    class_label = Label(canvas_frame_2)
+    class_label.grid(row=5,column=0)
     def update_policy_canvas():
         global index
         global data
         policy = data.getPolicy(index)
-        pred = m.inference(sess,[data.getBoard(index)[:,:,None]])
-        value_pred = pred[0][0]
-        policy_pred = pred[1][0]
+        if backend == 'tensorflow':
+            pred = m.inference(sess,[data.getBoard(index)[:,:,None]])
+            value_pred = pred[0][0]
+            policy_pred = pred[1][0]
+            class_pred = np.argmax(pred[2][0])
+        elif backend == 'pytorch':
+            pred = m.inference(data.getBoard(index)[None,None,:,:])
+            value_pred = pred[0][0][0]
+            policy_pred = pred[1][0]
+            class_pred = 0
         drawPolicy(policy,policy_canvas,offset_y=0)
         drawPolicy(policy_pred,policy_canvas_2,offset_y=0)
         value_label.config(text='Value prediction: %.3f'%value_pred)
+        class_label.config(text='Class prediction: %d'%class_pred)
         policy_canvas.after(update_interval,update_policy_canvas)
     update_policy_canvas()
 
