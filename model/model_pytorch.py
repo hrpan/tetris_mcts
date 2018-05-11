@@ -15,19 +15,26 @@ class Net(nn.Module):
 
     def __init__(self):
         super(Net,self).__init__()
-
-        kernel_size = 4
-        filters = 32
+        
+        kernel_size = 3
+        filters = 16
         self.conv1 = nn.Conv2d(1,filters,kernel_size)
         self.conv2 = nn.Conv2d(filters,filters,kernel_size)
-
-        self.flat_in = ( IMG_H - ( kernel_size - 1 ) * 2 ) * ( IMG_W - ( kernel_size - 1 ) * 2 ) * filters
-        self.flat_out = 128
+       
+        n_convs = 2
+        
+        self.flat_in = ( IMG_H - ( kernel_size - 1 ) * n_convs ) * ( IMG_W - ( kernel_size - 1 ) * n_convs ) * filters
+        
+        self.flat_out = 64
         self.fc1 = nn.Linear(self.flat_in,self.flat_out)
-
+        
+        
         self.fc_p = nn.Linear(self.flat_out,6)
         self.fc_v = nn.Linear(self.flat_out,1)
-
+        """
+        self.fc_p = nn.Linear(self.flat_in,6)
+        self.fc_v = nn.Linear(self.flat_in,1)
+        """
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
@@ -35,7 +42,8 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
 
         policy = F.softmax(self.fc_p(x),dim=1)
-        value = self.fc_v(x)
+        #value = F.relu(self.fc_v(x))
+        value = torch.exp(self.fc_v(x))
 
         return value, policy
 
@@ -46,11 +54,13 @@ class Model:
     def __init__(self,new=True):
 
         self.model = Net()
-
-        self.optimizer = optim.SGD(self.model.parameters(),lr=0.1,momentum=0.9)
+        """
+        self.optimizer = optim.SGD(self.model.parameters(),lr=1.0,momentum=0.99)
 
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,patience=10,verbose=True)
-        #self.optim = optim.Adam(self.model.parameters(),amsgrad=True)
+        """
+        self.optimizer = optim.Adam(self.model.parameters(),amsgrad=True)
+        self.scheduler = None
 
     def _loss(self,batch):
 
@@ -60,9 +70,10 @@ class Model:
 
         _v, _p = self.model(state)
 
-        #loss_v = F.mse_loss(_v,value)
-        loss_v = Variable(torch.FloatTensor([0]))
-        loss_p = F.kl_div(torch.log(_p),policy)
+        loss_v = F.mse_loss(_v,value)
+        #loss_v = Variable(torch.FloatTensor([0]))
+        #loss_p = F.kl_div(torch.log(_p),policy)
+        loss_p = Variable(torch.FloatTensor([0]))
 
         loss = loss_v + loss_p
         return loss, loss_v, loss_p
@@ -101,7 +112,8 @@ class Model:
 
     def update_scheduler(self,val_loss):
 
-        self.scheduler.step(val_loss)
+        if self.scheduler:
+            self.scheduler.step(val_loss)
 
     def save(self):
 
