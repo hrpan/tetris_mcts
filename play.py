@@ -4,10 +4,9 @@ import sys
 sys.path.append('../../pyTetris')
 from pyTetris import Tetris
 #from agent_mcts import Agent
-#from agent_mcts_node import Agent
-#from agent_mcts_sim import Agent
-from agents.FullSim import FullSim as Agent
-#from agent_mcts_vanilla import Agent
+#from agents.FullSim import FullSim as Agent
+#from agents.Vanilla import Vanilla as Agent
+from agents.ValueSim import ValueSim as Agent
 import numpy as np
 import argparse
 import random
