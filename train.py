@@ -89,7 +89,7 @@ VALIDATION SET
 if val_split_max >= 0:
     n_data = int(max(len(states) * ( 1 - val_split ),len(states) - val_split_max))
 else:
-    n_data = int(len(state) * ( 1 - val_split ))
+    n_data = int(len(states) * ( 1 - val_split ))
 
 batch_val = [states[n_data:],labels[n_data:],policy[n_data:]]
 
