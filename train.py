@@ -11,36 +11,36 @@ from math import ceil
 ARGS
 """
 parser = argparse.ArgumentParser()
-parser.add_argument('--backend',default='pytorch',type=str,help='DL backend')
-parser.add_argument('--cycle',default=-1,type=int,help='Cycle (default:-1)')
-parser.add_argument('--new',default=False,help='Create a new model instead of training the old one',action='store_true')
-parser.add_argument('--batch_size',default=32,type=int,help='Batch size (default:32)')
-parser.add_argument('--epochs',default=10,type=int,help='Training epochs (default:10)')
-parser.add_argument('--max_iters',default=-1,type=int,help='Max training iterations (default:100000, negative for unlimited)')
-parser.add_argument('--data_dir',default=['./data'],nargs='*',help='Training data directories (default:./data/ep*)')
-parser.add_argument('--gamma',default=0.99,type=float,help='Gamma for discounted rewards')
-parser.add_argument('--save_loss',default=False,help='Save loss history',action='store_true')
-parser.add_argument('--save_interval',default=100,type=int,help='Number of iterations between save_loss')
-parser.add_argument('--shuffle',default=False,help='Shuffle dataset',action='store_true')
-parser.add_argument('--val_split',default=0.1,type=float,help='Split ratio for validation data')
-parser.add_argument('--val_split_max',default=-1,type=int,help='Maximum size for validation data (negative for unlimited)')
-#parser.add_argument('--val_interval',default=1000,type=int,help='Number of iterations between validation loss')
+parser.add_argument('--backend', default='pytorch', type=str, help='DL backend')
+parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default:32)')
+parser.add_argument('--cycle', default=-1, type=int, help='Cycle (default:-1)')
+parser.add_argument('--data_dir', default=['./data'], nargs='*', help='Training data directories (default:./data/ep*)')
+parser.add_argument('--epochs', default=10, type=int, help='Training epochs (default:10)')
+parser.add_argument('--last_ncycles', default=1, type=int, help='Use last n cycles in training only (default:1, -1 for all)')
+parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
+parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
+parser.add_argument('--val_split', default=0.1, type=float, help='Split ratio for validation data')
+parser.add_argument('--val_split_max', default=-1, type=int, help='Maximum size for validation data (negative for unlimited)')
+parser.add_argument('--sarsa', default=False, help='Sarsa update', action='store_true')
+parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
+parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
+parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
 args = parser.parse_args()
 
 backend = args.backend
-cycle = args.cycle
-new = args.new
 batch_size = args.batch_size
-epochs = args.epochs
+cycle = args.cycle
 data_dir = args.data_dir
-gamma = args.gamma
+epochs = args.epochs
+last_ncycles = args.last_ncycles
 max_iters = args.max_iters
+new = args.new
+val_split = args.val_split
+val_split_max = args.val_split_max
+sarsa = args.sarsa
 save_loss = args.save_loss
 save_interval = args.save_interval
 shuffle = args.shuffle
-val_split = args.val_split
-val_split_max = args.val_split_max
-#val_interval = args.val_interval
 
 #========================
 """ 
@@ -49,8 +49,12 @@ LOAD DATA
 list_of_data = []
 for _d in data_dir:
     list_of_data += glob.glob(_d+'/data*') 
-
+list_of_data.sort(key=os.path.getmtime)
 dfs = []
+
+if last_ncycles > 0:
+    list_of_data = list_of_data[-last_ncycles:]
+    
 for file_name in list_of_data:
     df = pd.read_pickle(file_name)
     dfs.append(df)
@@ -62,14 +66,20 @@ else:
 
 b_shape = df['board'][0].shape
 
+if sarsa:
+    _child_stats_sum = np.sum(np.stack(df['child_stats'].values), axis=2)
+    values = _child_stats_sum[:,1] / _child_stats_sum[:,0]
+else:
+    values = np.stack(df['cum_score'].values)
+
 if backend == 'pytorch':
     states = np.expand_dims(np.stack(df['board'].values),1).astype(np.float32)
     policy = np.stack(df['policy'].values).astype(np.float32)
-    labels = np.expand_dims(np.stack(df['cum_score'].values),-1).astype(np.float32)
+    values = np.expand_dims(values,-1).astype(np.float32)
 elif backend == 'tensorflow':
     states = np.expand_dims(np.stack(df['board'].values),-1)
     policy = np.stack(df['policy'].values)
-    labels = np.expand_dims(np.stack(df['cum_score'].values),-1)
+    values = np.expand_dims(values,-1)
 
 #========================
 """
@@ -80,7 +90,7 @@ if shuffle:
 
     states = states[indices]
     policy = policy[indices]
-    labels = labels[indices]
+    values = values[indices]
 
 #=========================
 """
@@ -91,9 +101,9 @@ if val_split_max >= 0:
 else:
     n_data = int(len(states) * ( 1 - val_split ))
 
-batch_val = [states[n_data:],labels[n_data:],policy[n_data:]]
+batch_val = [states[n_data:], values[n_data:], policy[n_data:]]
 
-batch_train = [states[:n_data],labels[:n_data],policy[:n_data]]
+batch_train = [states[:n_data], values[:n_data], policy[:n_data]]
 
 #=========================
 """
