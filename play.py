@@ -5,8 +5,8 @@ sys.path.append('../../pyTetris')
 from pyTetris import Tetris
 import numpy as np
 import argparse
-import random
 import pandas as pd
+from importlib import import_module
 
 class ScoreTracker:
     def __init__(self):
@@ -22,9 +22,50 @@ class ScoreTracker:
         _std = np.std(self.scores)
         return _min, _max, _mean, _std
 
+    def printStats(self):
+        sys.stdout.write('\rGames played:%d min/max/mean/std:%.3f/%.3f/%.3f/%.3f'
+            %(len(self.scores),
+            np.amin(self.scores),
+            np.amax(self.scores),
+            np.mean(self.scores),
+            np.std(self.scores)))
+        sys.stdout.flush()
+
     def reset(self):
         self.scores = []
 
+class DFWrap:
+    def __init__(self, save_dir, save_file, cycle):
+
+        self.cycle = cycle
+
+        cols=['board','policy','action','score','cum_score','child_stats']
+        self.df = pd.DataFrame(columns=cols)
+        cols=['board','policy','action','score','child_stats']
+        self.df_ep = pd.DataFrame(columns=cols)
+
+        self.save_file = save_dir + save_file + str(cycle)
+    
+
+    def add(self, action, agent, game):
+        _dict = {'board': game.getState(),
+                'policy': agent.get_prob(),
+                'action': action,
+                'score': game.getScore(),
+                'child_stats': agent.get_stats()}
+        self.df_ep = self.df_ep.append(_dict,ignore_index=True)
+
+    def finalizeEpisode(self, score):
+        self.df_ep['cum_score'] = score - self.df_ep['score']
+        self.df = pd.concat([self.df,self.df_ep],ignore_index=True)
+        self.df_ep = self.df_ep[0:0]
+
+    def save(self):
+        self.df['cycle'] = self.cycle
+        if os.path.isfile(self.save_file):
+            df_old = pd.read_pickle(self.save_file)
+            self.df = pd.concat([df_old,self.df],ignore_index=True)
+        self.df.to_pickle(self.save_file)
 """
 ARGUMENTS
 """
@@ -59,24 +100,23 @@ save = args.save
 save_dir = args.save_dir
 save_file = args.save_file
 selfplay = args.selfplay
+
 """
 SOME INITS
 """
-
 game = Tetris(boardsize=(22,10),actions_per_drop=app)
 
 if selfplay:
-    _agent_module = __import__('agents.'+agent_type, globals(), locals(), [agent_type], 0)
+    _agent_module = import_module('agents.'+agent_type)
     Agent = getattr(_agent_module,agent_type)
     agent = Agent(mcts_const,mcts_sims,tau=mcts_tau)
     agent.set_root(game)
 
 if save:
-    df = pd.DataFrame(columns=['board','policy','action','score','cum_score','child_stats'])
-    df_ep = pd.DataFrame(columns=['board','policy','action','score','child_stats'])
+    df = DFWrap(save_dir, save_file, cycle)
 
 tracker = ScoreTracker()
-n_games = ngames
+
 """
 MAIN GAME LOOP
 """
@@ -86,18 +126,15 @@ while True:
         print('Current score:%d'%game.getScore())
         action = int(input('Play:'))
 
-    if printboard:
-        game.printState()
+    elif selfplay:
 
-    if selfplay:
+        if printboard:
+            game.printState()
+
         action = agent.play()
+
         if save:
-            _dict = {'board':game.getState(),
-                    'policy':agent.get_prob(),
-                    'action':action,
-                    'score':game.getScore(),
-                    'child_stats':agent.get_stats()}
-            df_ep = df_ep.append(_dict,ignore_index=True)
+            df.add(action,agent,game)    
 
     game.play(action)
     
@@ -112,16 +149,15 @@ while True:
             else:
                 break
         else:
-            tracker.append(game.getScore())
-            n_games -= 1
+            ngames -= 1
+
             if save:
-                score = game.getScore()
-                df_ep['cum_score'] = score - df_ep['score']
-                df = pd.concat([df,df_ep],ignore_index=True)
-                df_ep = df_ep[0:0]
-            sys.stdout.write('\rGames remaining:%d min/max/mean/std:%.3f/%.3f/%.3f/%.3f'%(n_games, *tracker.getStats()))
-            sys.stdout.flush()
-            if n_games == 0:
+                df.finalizeEpisode(game.getScore())
+
+            tracker.append(game.getScore())
+            tracker.printStats()
+
+            if ngames == 0:
                 break
             else:
                 game.reset()
@@ -132,9 +168,4 @@ sys.stdout.flush()
 
 
 if save:
-    df['cycle']=cycle
-    _save = save_dir + save_file + str(cycle)
-    if os.path.isfile(_save):
-        df_old = pd.read_pickle(_save)
-        df = pd.concat([df_old,df],ignore_index=True)
-    df.to_pickle(_save)
+   df.save() 
