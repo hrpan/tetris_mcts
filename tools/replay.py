@@ -1,4 +1,5 @@
 import sys
+import os
 import numpy as np
 import pandas as pd
 import argparse
@@ -11,12 +12,14 @@ ARG PARSE
 """
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--data_paths',default=['./data'],nargs='*',help='Data paths')
-parser.add_argument('--backend',default='pytorch',help='DL backend')
+parser.add_argument('--backend', default='pytorch',help='DL backend')
+parser.add_argument('--data_paths', default=['./data'],nargs='*',help='Data paths')
+parser.add_argument('--inference', default=False, help='Real time inference', action='store_true')
 args = parser.parse_args()
 
-data_paths = args.data_paths
 backend = args.backend
+data_paths = args.data_paths
+inference = args.inference
 
 """
 MODEL INIT
@@ -46,7 +49,7 @@ class Data:
         self.load_data()
 
     def load_data(self):
-        list_of_data = [f for p in self.data_paths for f in glob.glob(p+'/data*')]
+        list_of_data = [f for p in self.data_paths for f in sorted(glob.glob(p+'/data*'), key=os.path.getmtime)]
         dfs = [pd.read_pickle(f) for f in list_of_data]
 
         self.data = pd.concat(dfs,ignore_index=True)
@@ -142,15 +145,20 @@ if __name__ == '__main__':
         global index
         global data
         policy = data.getPolicy(index)
-        if backend == 'tensorflow':
-            pred = m.inference(sess,[data.getBoard(index)[:,:,None]])
-            value_pred = pred[0][0]
-            policy_pred = pred[1][0]
-            class_pred = np.argmax(pred[2][0])
-        elif backend == 'pytorch':
-            pred = m.inference(data.getBoard(index)[None,None,:,:])
-            value_pred = pred[0][0][0]
-            policy_pred = pred[1][0]
+        if inference:
+            if backend == 'tensorflow':
+                pred = m.inference(sess,[data.getBoard(index)[:,:,None]])
+                value_pred = pred[0][0]
+                policy_pred = pred[1][0]
+                class_pred = np.argmax(pred[2][0])
+            elif backend == 'pytorch':
+                pred = m.inference(data.getBoard(index)[None,None,:,:])
+                value_pred = pred[0][0][0]
+                policy_pred = pred[1][0]
+                class_pred = 0
+        else:
+            value_pred = -1
+            policy_pred = np.empty((6,)) 
             class_pred = 0
         drawPolicy(policy,policy_canvas,offset_y=0)
         drawPolicy(policy_pred,policy_canvas_2,offset_y=0)
