@@ -19,14 +19,19 @@ class Agent:
 
     def init_array(self):
 
-        child_arr = np.zeros((self.init_nodes,n_actions),dtype=np.int32)
-        node_stats_arr = np.zeros((self.init_nodes,5),dtype=np.float32)
-
+        action_counts_arr = np.zeros((self.init_nodes, n_actions), dtype = np.int32)
+        child_arr = np.zeros((self.init_nodes, n_actions), dtype = np.int32)
+        child_stats_arr = np.zeros((self.init_nodes, 6, n_actions), dtype = np.float32)
+        node_stats_arr = np.zeros((self.init_nodes, 5), dtype = np.float32)
         self.arrs = {
+                'action_counts':action_counts_arr,
                 'child':child_arr,
+                'child_stats':child_stats_arr,
                 'node_stats':node_stats_arr,
                 }
 
+        self.child_sets = [[set() for i in range(n_actions)] for j in range(self.init_nodes)]
+        
         self.game_arr = [None] * self.init_nodes
 
         self.available = [i for i in range(1,self.init_nodes)]
@@ -88,13 +93,11 @@ class Agent:
         self.available += [i for i in range(self.max_nodes,self.max_nodes+n_nodes)]
         self.max_nodes += n_nodes
 
-    def new_node(self,game):
+    def new_node(self, game):
 
-        if game in self.node_index_dict:
+        idx = self.node_index_dict.get(game)
 
-            return self.node_index_dict[game]
-
-        else:
+        if not idx:
 
             if self.available:
                 idx = self.available.pop()
@@ -114,9 +117,10 @@ class Agent:
 
             self.occupied.append(idx)
 
-            return idx
+        return idx
 
-    def mcts(self,root_index):
+
+    def mcts(self, root_index):
         pass
 
     def play(self):
@@ -134,7 +138,6 @@ class Agent:
         return action
 
     def compute_stats(self):
-
         _stats = np.zeros((6,n_actions))
 
         _childs = self.arrs['child'][self.root]
@@ -173,9 +176,14 @@ class Agent:
             del self.node_index_dict[_g]
 
             self.game_arr[idx] = None
+            
+            for i in range(n_actions):
+                self.child_sets[idx][i] = set()
 
             self.arrs['child'][idx] = 0
+            self.arrs['child_stats'][idx] = 0
             self.arrs['node_stats'][idx] = 0
+             
 
     def set_root(self,game):
 

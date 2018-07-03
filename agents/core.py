@@ -7,6 +7,13 @@ from numba import int32, float32
 
 n_actions = 6
 
+@jit(nopython=True, cache=True)
+def findZero(arr):
+    for i in range(n_actions):
+        if arr[i] == 0:
+            return i
+    return False
+
 @jit(nopython=True,cache=True)
 def select_index(index,child,node_stats):
 
@@ -96,5 +103,82 @@ def choose_action(p):
     _a = np.searchsorted(_cdf,rnd)
 
     return _a
+
+@jit(nopython=True,cache=True)
+def computeQ(child_set, node_stats):
+    q = 0
+    q2 = 0
+    q_max = 0
+    n_tot = 0
+    for c in child_set:
+        n_tot += node_stats[c][0]
+        q += node_stats[c][1]
+        q2 += node_stats[c][3]
+        q_max = max(q_max, node_stats[c][4])
+
+    return q, q/(n_tot+1e-7), q2, q_max
+
+@jit(nopython=True,cache=True)
+def atomicSelect(stats):
+
+    _n_sum = np.sum(stats[0])
+    
+    _max = max(1, np.amax(stats[5]))
+
+    _q = stats[3]
+
+    _c = _max * np.sqrt( np.log(_n_sum) / stats[0] )
+
+    return np.argmax( _q + _c )
+
+@jit(nopython=True,cache=True)
+def atomicFill(i, c_set, _stats, node_stats):
+    q_acc, q_mean, q2_acc, q_max = computeQ(c_set, node_stats)
+    _stats[1][i] = q_acc
+    _stats[2][i] = 0
+    _stats[3][i] = q_mean
+    _stats[4][i] = q2_acc
+    _stats[5][i] = q_max
+
+   
+
+def fill_child_stats(idx, node_stats, action_counts, child_sets):
+    _stats = np.zeros((6, n_actions),dtype=np.float32)
+    
+    _stats[0] = action_counts[idx]
+
+    for i in range(n_actions):
+        c_set = child_sets[idx][i]
+        if c_set:
+            atomicFill(i, c_set, _stats, node_stats)
+    return _stats 
+
+def select_index_2(game, node_dict, node_stats, action_counts, child_sets):
+
+    trace = []
+
+    idx = node_dict.get(game)
+
+    while idx and not game.end:
+
+        trace.append(idx)
+        
+        _a = findZero(action_counts[idx])
+       
+        if not _a:
+            _stats = fill_child_stats(idx, node_stats, action_counts, child_sets)
+                
+            _a = atomicSelect(_stats)
+
+        action_counts[idx][_a] += 1
+        game.play(_a)
+
+        idx_2 = node_dict.get(game)
+        
+        if idx_2:
+            child_sets[idx][_a].add(idx_2)
+        idx = idx_2
+
+    return trace
 
 
