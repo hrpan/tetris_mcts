@@ -23,7 +23,7 @@ class ScoreTracker:
         return _min, _max, _mean, _std
 
     def printStats(self):
-        sys.stdout.write('\rGames played:%d min/max/mean/std:%.3f/%.3f/%.3f/%.3f'
+        sys.stdout.write('\rGames played:%3d    min/max/mean/std:%5.2f/%5.2f/%5.2f/%5.2f'
             %(len(self.scores),
             np.amin(self.scores),
             np.amax(self.scores),
