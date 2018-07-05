@@ -67,8 +67,10 @@ else:
 b_shape = df['board'][0].shape
 
 if sarsa:
-    _child_stats_sum = np.sum(np.stack(df['child_stats'].values), axis=2)
-    values = _child_stats_sum[:,1] / _child_stats_sum[:,0]
+    _child_stats = np.stack(df['child_stats'].values)
+    n = _child_stats[:,0]
+    q = _child_stats[:,3]
+    values = np.sum(n * q, axis=1) / np.sum(n, axis=1)
 else:
     values = np.stack(df['cum_score'].values)
 
