@@ -156,7 +156,7 @@ def fill_child_stats(idx, node_stats, action_counts, child_sets):
 def select_index_2(game, node_dict, node_stats, action_counts, child_sets):
 
     trace = []
-
+    actions = []
     idx = node_dict.get(game)
 
     while idx and not game.end:
@@ -171,6 +171,9 @@ def select_index_2(game, node_dict, node_stats, action_counts, child_sets):
             _a = atomicSelect(_stats)
 
         action_counts[idx][_a] += 1
+
+        actions.append(_a)
+
         game.play(_a)
 
         idx_2 = node_dict.get(game)
@@ -179,6 +182,6 @@ def select_index_2(game, node_dict, node_stats, action_counts, child_sets):
             child_sets[idx][_a].add(idx_2)
         idx = idx_2
 
-    return trace
+    return trace, actions
 
 
