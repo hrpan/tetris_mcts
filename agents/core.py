@@ -1,11 +1,12 @@
 import numpy as np
 import random
-import sys
 
 from numba import jit
 from numba import int32, float32
 
 n_actions = 6
+
+eps = 1e-7
 
 @jit(nopython=True, cache=True)
 def findZero(arr):
@@ -140,48 +141,94 @@ def atomicFill(i, c_set, _stats, node_stats):
     _stats[4][i] = q2_acc
     _stats[5][i] = q_max
 
-   
+@jit(nopython=True,cache=True)
+def update_child_info(trace, action, child_info):
+    for i in range(len(action)):
+        s = trace[i]
+        _s = trace[i+1]
+        a = action[i]
+        for j in range(child_info.shape[2]):
+            if child_info[s][a][j][0] == _s:
+                child_info[s][a][j][1] += 1
+                break
+            elif child_info[s][a][j][0] == 0:
+                child_info[s][a][j][0] = _s
+                child_info[s][a][j][1] = 1
+                break
+            if j == child_info.shape[2] - 1:
+                return False
+    return True
 
-def fill_child_stats(idx, node_stats, action_counts, child_sets):
+@jit(nopython=True,cache=True)
+def fill_child_stats(idx, node_stats, child_info):
     _stats = np.zeros((6, n_actions),dtype=np.float32)
-    
-    _stats[0] = action_counts[idx]
 
     for i in range(n_actions):
-        c_set = child_sets[idx][i]
-        if c_set:
-            atomicFill(i, c_set, _stats, node_stats)
+        q_avg = 0
+        counts = 0
+        _val_2 = 0
+        _max = 0
+        for j in range(child_info.shape[2]):
+            _node = child_info[idx][i][j][0]
+            if _node == 0:
+                break
+            _count = child_info[idx][i][j][1]
+            _val = node_stats[_node][1] / node_stats[_node][0]
+            q_avg += _count * _val
+            counts += _count
+            _val_2 += node_stats[_node][3]
+            _max = max(_max, node_stats[_node][4]) 
+
+        _stats[0][i] = counts
+        _stats[1][i] = 0
+        _stats[2][i] = 0
+        _stats[3][i] = q_avg / (counts+eps)
+        _stats[4][i] = _val_2
+        _stats[5][i] = _max
+    
     return _stats 
 
-def select_index_2(game, node_dict, node_stats, action_counts, child_sets):
+@jit(nopython=True,cache=True)
+def get_all_child_2(index, child_info):
+    to_traverse = [index, ]
+    traversed = set([0])
+
+    i = 0
+    while i < len(to_traverse):
+        idx = to_traverse[i]
+        if idx not in traversed:
+            traversed.add(idx)
+            for j in range(n_actions):
+                to_traverse += list(child_info[idx, j, :, 0]) 
+        i += 1
+
+    return traversed
+
+def select_index_2(game, node_dict, node_stats, child_info):
 
     trace = []
-    actions = []
+    action = []
     idx = node_dict.get(game)
 
     while idx and not game.end:
 
         trace.append(idx)
-        
-        _a = findZero(action_counts[idx])
+
+        action_counts = np.sum(child_info[idx, :, :, 1], axis=1)        
+ 
+        _a = findZero(action_counts)
        
         if not _a:
-            _stats = fill_child_stats(idx, node_stats, action_counts, child_sets)
+            _stats = fill_child_stats(idx, node_stats, child_info)
                 
             _a = atomicSelect(_stats)
 
-        action_counts[idx][_a] += 1
-
-        actions.append(_a)
+        action.append(_a)
 
         game.play(_a)
 
-        idx_2 = node_dict.get(game)
-        
-        if idx_2:
-            child_sets[idx][_a].add(idx_2)
-        idx = idx_2
+        idx = node_dict.get(game)
 
-    return trace, actions
+    return trace, action
 
 
