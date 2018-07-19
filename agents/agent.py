@@ -19,18 +19,14 @@ class Agent:
 
     def init_array(self):
 
-        action_counts_arr = np.zeros((self.init_nodes, n_actions), dtype = np.int32)
         child_arr = np.zeros((self.init_nodes, n_actions), dtype = np.int32)
         child_stats_arr = np.zeros((self.init_nodes, 6, n_actions), dtype = np.float32)
         node_stats_arr = np.zeros((self.init_nodes, 5), dtype = np.float32)
         self.arrs = {
-                'action_counts':action_counts_arr,
                 'child':child_arr,
                 'child_stats':child_stats_arr,
                 'node_stats':node_stats_arr,
                 }
-
-        self.child_sets = [[set() for i in range(n_actions)] for j in range(self.init_nodes)]
         
         self.game_arr = [None] * self.init_nodes
 
@@ -176,9 +172,6 @@ class Agent:
             del self.node_index_dict[_g]
 
             self.game_arr[idx] = None
-            
-            for i in range(n_actions):
-                self.child_sets[idx][i] = set()
 
             self.arrs['child'][idx] = 0
             self.arrs['child_stats'][idx] = 0
