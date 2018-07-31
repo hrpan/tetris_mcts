@@ -75,8 +75,7 @@ class Agent:
 
     def expand_nodes(self,n_nodes=10000):
 
-        sys.stdout.write('Adding more nodes...\n')
-        sys.stdout.flush()
+        sys.stderr.write('\nWATNING: ADDING EXTRA NODES...\n')
 
         for k, arr in self.arrs.items():
             _s = arr.shape
@@ -156,15 +155,18 @@ class Agent:
 
     def get_stats(self):
 
-        return self.stats
+        return np.copy(self.stats)
 
     def remove_nodes(self):
+
+        sys.stderr.write('\nWARNING: REMOVING UNUSED NODES...\n')
 
         _c = get_all_childs(self.root,self.arrs['child'])
 
         self.occupied = list(_c)
-
+        sys.stderr.write('Number of occupied nodes: ' + str(len(self.occupied)) + '\n')
         self.available = list(set(range(self.max_nodes)) - _c)
+        sys.stderr.write('Number of available nodes: ' + str(len(self.available)) + '\n')
 
         for idx in self.available:
             _g = self.game_arr[idx]
