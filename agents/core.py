@@ -133,7 +133,8 @@ def update_child_info(trace, action, child_info):
                 pair[1] += 1
                 break
         if not found:
-            child_info[s][a].append([_s, 1])
+            child_info[s][a] = np.concatenate((child_info[s][a], [[_s, 1]]))
+
     return True
 
 @jit(nopython=True,cache=True)
@@ -167,8 +168,8 @@ def fill_child_stats(idx, node_stats, child_info):
     __stats.fill(0)
 
     for i in range(n_actions):
-        if child_info[idx][i]:
-            atomicFill(i, __stats, node_stats, np.array(child_info[idx][i]))
+        if len(child_info[idx][i]) > 0:
+            atomicFill(i, __stats, node_stats, child_info[idx][i])
        
     return __stats 
 
@@ -238,11 +239,9 @@ def select_index_2(game, node_dict, node_stats, child_info):
 
             _stats_tmp = np.zeros((4, n_actions), dtype=np.float32)
 
-            _max = max([_tmp_func(_stats_tmp, i, node_stats, np.array(child_info[idx][i])) for i in range(n_actions)])
+            _max = max([_tmp_func(_stats_tmp, i, node_stats, child_info[idx][i]) for i in range(n_actions)])
             
             _tmp_select(_stats_tmp, _max)           
-#            _stats = fill_child_stats(idx, node_stats, child_info)
-#            _a = atomicSelect(_stats)
 
         action.append(_a)
 
