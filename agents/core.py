@@ -8,6 +8,8 @@ n_actions = 6
 
 eps = 1e-7
 
+__stats = np.zeros((6, n_actions), dtype=np.float32)
+
 @jit(nopython=True, cache=True)
 def findZero(arr):
     for i in range(n_actions):
@@ -106,20 +108,6 @@ def choose_action(p):
     return _a
 
 @jit(nopython=True,cache=True)
-def computeQ(child_set, node_stats):
-    q = 0
-    q2 = 0
-    q_max = 0
-    n_tot = 0
-    for c in child_set:
-        n_tot += node_stats[c][0]
-        q += node_stats[c][1]
-        q2 += node_stats[c][3]
-        q_max = max(q_max, node_stats[c][4])
-
-    return q, q/(n_tot+1e-7), q2, q_max
-
-@jit(nopython=True,cache=True)
 def atomicSelect(stats):
 
     _n_sum = np.sum(stats[0])
@@ -132,63 +120,59 @@ def atomicSelect(stats):
 
     return np.argmax( _q + _c )
 
-@jit(nopython=True,cache=True)
-def atomicFill(i, c_set, _stats, node_stats):
-    q_acc, q_mean, q2_acc, q_max = computeQ(c_set, node_stats)
-    _stats[1][i] = q_acc
-    _stats[2][i] = 0
-    _stats[3][i] = q_mean
-    _stats[4][i] = q2_acc
-    _stats[5][i] = q_max
-
-@jit(nopython=True,cache=True)
+#@jit(nopython=True,cache=True)
 def update_child_info(trace, action, child_info):
     for i in range(len(action)):
         s = trace[i]
         _s = trace[i+1]
         a = action[i]
-        for j in range(child_info.shape[2]):
-            if child_info[s][a][j][0] == _s:
-                child_info[s][a][j][1] += 1
+        found = False
+        for pair in child_info[s][a]:
+            if pair[0] == _s:
+                found = True
+                pair[1] += 1
                 break
-            elif child_info[s][a][j][0] == 0:
-                child_info[s][a][j][0] = _s
-                child_info[s][a][j][1] = 1
-                break
-            if j == child_info.shape[2] - 1:
-                return False
+        if not found:
+            child_info[s][a].append([_s, 1])
     return True
 
 @jit(nopython=True,cache=True)
+def atomicFill(act, stats, node_stats, childs):
+
+    val = 0
+    counts = 0
+    val_2 =0
+    m = 0
+
+    for j in range(len(childs)):
+        n = childs[j][0]
+        c = childs[j][1]
+        _v = node_stats[n][1] / node_stats[n][0]
+        val += c * _v
+        counts += c   
+        val_2 += node_stats[n][3]
+        m = max(m, node_stats[n][4])
+
+    stats[0][act] = counts
+    stats[1][act] = 0
+    stats[2][act] = 0
+    stats[3][act] = val / counts
+    stats[4][act] = val_2
+    stats[5][act] = m
+
+
 def fill_child_stats(idx, node_stats, child_info):
-    _stats = np.zeros((6, n_actions),dtype=np.float32)
+
+    global __stats
+    __stats.fill(0)
 
     for i in range(n_actions):
-        q_avg = 0
-        counts = 0
-        _val_2 = 0
-        _max = 0
-        for j in range(child_info.shape[2]):
-            _node = child_info[idx][i][j][0]
-            if _node == 0:
-                break
-            _count = child_info[idx][i][j][1]
-            _val = node_stats[_node][1] / node_stats[_node][0]
-            q_avg += _count * _val
-            counts += _count
-            _val_2 += node_stats[_node][3]
-            _max = max(_max, node_stats[_node][4]) 
+        if child_info[idx][i]:
+            atomicFill(i, __stats, node_stats, np.array(child_info[idx][i]))
+       
+    return __stats 
 
-        _stats[0][i] = counts
-        _stats[1][i] = 0
-        _stats[2][i] = 0
-        _stats[3][i] = q_avg / (counts+eps)
-        _stats[4][i] = _val_2
-        _stats[5][i] = _max
-    
-    return _stats 
-
-@jit(nopython=True,cache=True)
+#@jit(nopython=True,cache=True)
 def get_all_child_2(index, child_info):
     to_traverse = [index, ]
     traversed = set([0])
@@ -198,11 +182,45 @@ def get_all_child_2(index, child_info):
         idx = to_traverse[i]
         if idx not in traversed:
             traversed.add(idx)
-            for j in range(n_actions):
-                to_traverse += list(child_info[idx, j, :, 0]) 
+            _list = [p[0] for a in range(n_actions) for p in child_info[idx][a]]
+#            for j in range(n_actions):
+#                to_traverse += list(child_info[idx*n_actions + j][:, 0]) 
+            to_traverse += _list
         i += 1
 
     return traversed
+
+#@jit(nopython=True,cache=True)
+def findZero_2(index, child_info):
+    for i in range(n_actions):
+        if len(child_info[index][i]) == 0:
+            return i
+    return False
+
+@jit(nopython=True,cache=True)
+def _tmp_func(stats, act, node_stats, childs):
+    node_visits = 0
+    q_max = 0
+    for i in range(childs.shape[0]):
+        idx = childs[i][0]
+        node = node_stats[idx]
+        node_visits += node[0]
+        stats[0][act] += childs[i][1]
+        stats[1][act] +=  node[1]
+        stats[2][act] += node[0] * node[4] * np.sqrt( 1 / node[0] )
+        q_max = max(q_max, node[4])
+    stats[1][act] /= node_visits
+    stats[2][act] /= node_visits
+    stats[3][act] = childs.shape[0]
+
+    return q_max 
+
+@jit(nopython=True,cache=True)
+def _tmp_select(stats, v_max):
+    _p = ( stats[3] + 0.5 ) / ( stats[0] + 1 )
+    _u = _p * v_max * np.sqrt( np.log( np.sum(stats[0]) ) / stats[0] ) + ( 1 - _p ) * stats[2]
+    
+    return np.argmax( stats[1] + _u )
 
 def select_index_2(game, node_dict, node_stats, child_info):
 
@@ -214,14 +232,17 @@ def select_index_2(game, node_dict, node_stats, child_info):
 
         trace.append(idx)
 
-        action_counts = np.sum(child_info[idx, :, :, 1], axis=1)        
- 
-        _a = findZero(action_counts)
-       
-        if not _a:
-            _stats = fill_child_stats(idx, node_stats, child_info)
-                
-            _a = atomicSelect(_stats)
+        _a = findZero_2(idx, child_info)
+
+        if _a is False:
+
+            _stats_tmp = np.zeros((4, n_actions), dtype=np.float32)
+
+            _max = max([_tmp_func(_stats_tmp, i, node_stats, np.array(child_info[idx][i])) for i in range(n_actions)])
+            
+            _tmp_select(_stats_tmp, _max)           
+#            _stats = fill_child_stats(idx, node_stats, child_info)
+#            _a = atomicSelect(_stats)
 
         action.append(_a)
 
