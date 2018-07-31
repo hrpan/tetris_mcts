@@ -193,19 +193,17 @@ def findZero_2(index, child_info):
 
 @jit(nopython=True,cache=True)
 def _tmp_func(stats, act, node_stats, childs):
-    node_visits = 0
     q_max = 0
-    for i in range(childs.shape[0]):
+    for i in range(len(childs)):
         idx = childs[i][0]
         node = node_stats[idx]
-        node_visits += node[0]
         stats[0][act] += childs[i][1]
-        stats[1][act] +=  node[1]
-        stats[2][act] += node[0] * node[4] * np.sqrt( 1 / node[0] )
+        stats[1][act] += childs[i][1] * node[1] / node[0]
+        stats[2][act] += childs[i][1] * node[4] * np.sqrt( 1 / node[0] )
         q_max = max(q_max, node[4])
-    stats[1][act] /= node_visits
-    stats[2][act] /= node_visits
-    stats[3][act] = childs.shape[0]
+    stats[1][act] /= stats[0][act]
+    stats[2][act] /= stats[0][act]
+    stats[3][act] = len(childs)
 
     return q_max 
 
@@ -213,7 +211,6 @@ def _tmp_func(stats, act, node_stats, childs):
 def _tmp_select(stats, v_max):
     _p = ( stats[3] + 0.5 ) / ( stats[0] + 1 )
     _u = _p * v_max * np.sqrt( np.log( np.sum(stats[0]) ) / stats[0] ) + ( 1 - _p ) * stats[2]
-    
     return np.argmax( stats[1] + _u )
 
 def select_index_2(game, node_dict, node_stats, child_info):
@@ -233,8 +230,7 @@ def select_index_2(game, node_dict, node_stats, child_info):
             _stats_tmp = np.zeros((4, n_actions), dtype=np.float32)
 
             _max = max([_tmp_func(_stats_tmp, i, node_stats, child_info[idx][i]) for i in range(n_actions)])
-            
-            _tmp_select(_stats_tmp, _max)           
+            _a = _tmp_select(_stats_tmp, _max)           
 
         action.append(_a)
 
