@@ -15,15 +15,13 @@ class ValueSim2(Agent):
 
         super().__init__(sims=sims, backend=backend, init_nodes=init_nodes)
 
-        child_length = 1000
-        child_info_arr = np.zeros((init_nodes, n_actions, child_length, 2), dtype=np.uint16)
-        self.arrs['child_info'] = child_info_arr
+        self.child_info = [[np.empty((0, 2), dtype=np.int32) for j in range(n_actions) ] for i in range(init_nodes)]
 
     def mcts(self,root_index):
 
         _g = self.game_arr[root_index].clone()
 
-        trace, action = select_index_2(_g, self.node_index_dict, self.arrs['node_stats'], self.arrs['child_info'])
+        trace, action = select_index_2(_g, self.node_index_dict, self.arrs['node_stats'], self.child_info)
 
         leaf_game = _g
 
@@ -35,10 +33,7 @@ class ValueSim2(Agent):
 
         trace.append(idx)
 
-        update_status = update_child_info(trace, action, self.arrs['child_info'])
-
-        if not update_status:
-            sys.stderr.write('\nWARNING: CHILD_INFO FULL\n')
+        update_child_info(trace, action, self.child_info)
 
         if not leaf_game.end:
 
@@ -46,25 +41,24 @@ class ValueSim2(Agent):
 
             value += v
 
-           
         
         backup_trace(trace, self.arrs['node_stats'], value)
 
     def compute_stats(self):
-
-        return fill_child_stats(self.root,
-            self.arrs['node_stats'],
-            self.arrs['child_info']) 
+        _s = fill_child_stats(self.root, self.arrs['node_stats'], self.child_info)
+        return _s
 
     def expand_nodes(self, n_nodes=100000):
 
         super().expand_nodes(n_nodes)
 
+        self.child_info += [[np.empty((0, 2), dtype=np.int32) for j in range(n_actions) ] for i in range(n_nodes)]
+
     def remove_nodes(self):
 
         sys.stderr.write('\nWARNING: REMOVING UNUSED NODES...\n')
 
-        c_set = get_all_child_2(self.root, self.arrs['child_info'])
+        c_set = get_all_child_2(self.root, self.child_info)
 
         self.occupied = list(c_set)
         sys.stderr.write('Number of occupied nodes: ' + str(len(self.occupied)) + '\n')
@@ -79,5 +73,5 @@ class ValueSim2(Agent):
             self.arrs['child'][idx] = 0
             self.arrs['child_stats'][idx] = 0
             self.arrs['node_stats'][idx] = 0
-            self.arrs['child_info'][idx] = 0
+            self.child_info[idx] = [np.empty((0, 2), dtype=np.int32) for i in range(n_actions)]
         

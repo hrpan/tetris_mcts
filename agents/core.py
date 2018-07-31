@@ -120,7 +120,6 @@ def atomicSelect(stats):
 
     return np.argmax( _q + _c )
 
-#@jit(nopython=True,cache=True)
 def update_child_info(trace, action, child_info):
     for i in range(len(action)):
         s = trace[i]
@@ -134,8 +133,6 @@ def update_child_info(trace, action, child_info):
                 break
         if not found:
             child_info[s][a] = np.concatenate((child_info[s][a], [[_s, 1]]))
-
-    return True
 
 @jit(nopython=True,cache=True)
 def atomicFill(act, stats, node_stats, childs):
@@ -173,7 +170,6 @@ def fill_child_stats(idx, node_stats, child_info):
        
     return __stats 
 
-#@jit(nopython=True,cache=True)
 def get_all_child_2(index, child_info):
     to_traverse = [index, ]
     traversed = set([0])
@@ -184,14 +180,11 @@ def get_all_child_2(index, child_info):
         if idx not in traversed:
             traversed.add(idx)
             _list = [p[0] for a in range(n_actions) for p in child_info[idx][a]]
-#            for j in range(n_actions):
-#                to_traverse += list(child_info[idx*n_actions + j][:, 0]) 
             to_traverse += _list
         i += 1
 
     return traversed
 
-#@jit(nopython=True,cache=True)
 def findZero_2(index, child_info):
     for i in range(n_actions):
         if len(child_info[index][i]) == 0:
