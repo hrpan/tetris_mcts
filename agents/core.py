@@ -209,8 +209,10 @@ def _tmp_func(stats, act, node_stats, childs):
 
 @jit(nopython=True,cache=True)
 def _tmp_select(stats, v_max):
+    v_max = v_max + eps
     _p = ( stats[3] + 0.5 ) / ( stats[0] + 1 )
-    _u = _p * v_max * np.sqrt( np.log( np.sum(stats[0]) ) / stats[0] ) + ( 1 - _p ) * stats[2]
+    _n = np.sqrt(np.log(np.sum(stats[0])))
+    _u = _n * ( _p * v_max * np.sqrt( 1 / stats[0] ) + ( 1 - _p ) * stats[2] )
     return np.argmax( stats[1] + _u )
 
 def select_index_2(game, node_dict, node_stats, child_info):
