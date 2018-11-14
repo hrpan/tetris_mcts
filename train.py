@@ -15,12 +15,15 @@ parser.add_argument('--backend', default='pytorch', type=str, help='DL backend')
 parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default:32)')
 parser.add_argument('--cycle', default=-1, type=int, help='Cycle (default:-1)')
 parser.add_argument('--data_dir', default=['./data'], nargs='*', help='Training data directories (default:./data/ep*)')
+parser.add_argument('--eligibility_trace', default=False, action='store_true', help='Use eligibility trace')
+parser.add_argument('--eligibility_trace_lambda', default=0.9, type=float, help='Lambda in eligibility trace (default:0.9)')
 parser.add_argument('--epochs', default=10, type=int, help='Training epochs (default:10)')
 parser.add_argument('--last_ncycles', default=1, type=int, help='Use last n cycles in training only (default:1, -1 for all)')
 parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
 parser.add_argument('--val_split', default=0.1, type=float, help='Split ratio for validation data')
 parser.add_argument('--val_split_max', default=-1, type=int, help='Maximum size for validation data (negative for unlimited)')
+parser.add_argument('--val_total', default=25, type=int, help='Total number of validations')
 parser.add_argument('--sarsa', default=False, help='Sarsa update', action='store_true')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
@@ -31,12 +34,15 @@ backend = args.backend
 batch_size = args.batch_size
 cycle = args.cycle
 data_dir = args.data_dir
+eligibility_trace = args.eligibility_trace
+eligibility_trace_lambda = args.eligibility_trace_lambda
 epochs = args.epochs
 last_ncycles = args.last_ncycles
 max_iters = args.max_iters
 new = args.new
 val_split = args.val_split
 val_split_max = args.val_split_max
+val_total = args.val_total
 sarsa = args.sarsa
 save_loss = args.save_loss
 save_interval = args.save_interval
@@ -70,7 +76,24 @@ if sarsa:
     _child_stats = np.stack(df['child_stats'].values)
     n = _child_stats[:,0]
     q = _child_stats[:,3]
-    values = np.sum(n * q, axis=1) / np.sum(n, axis=1)
+    if eligibility_trace:
+        _episode = np.stack(df['episode'].values)
+        _score = np.stack(df['score'].values)
+        _v = np.sum(n * q, axis=1) / np.sum(n, axis=1)
+        values = np.zeros(_v.shape)
+        for idx, ep in enumerate(_episode):
+            idx_r = idx
+            weight = 1.0
+            _sum = 0
+            _weight_sum = 0
+            while idx_r < len(_episode) and _episode[idx_r] == _episode[idx] :
+                _sum += weight * ( _score[idx_r] + _v[idx_r] - _score[idx] )
+                _weight_sum += weight
+                idx_r += 1
+                weight *= eligibility_trace_lambda
+            values[idx] = _sum / _weight_sum
+    else:
+        values = np.sum(n * q, axis=1) / np.sum(n, axis=1)
 else:
     values = np.stack(df['cum_score'].values)
 
@@ -142,7 +165,7 @@ if max_iters >= 0:
 else:
     iters = int(epochs * iters_per_epoch)
 
-val_interval = iters_per_epoch
+val_interval = iters // val_total
 
 loss_ma = 0
 decay = 0.99
@@ -178,6 +201,9 @@ for i in range(iters):
     if i % save_interval == 0 and save_loss:
         _idx = i // save_interval
         loss_history[_idx] = (loss,loss_v,loss_p,loss_val,loss_val_v,loss_val_p)
+
+sys.stdout.write('\n')
+sys.stdout.flush()
 
 if backend =='tensorflow':
     m.save(sess)
