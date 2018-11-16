@@ -6,6 +6,7 @@ import glob
 import argparse
 import random
 import pandas as pd
+from util.Data import DataLoader
 from math import ceil
 """
 ARGS
@@ -56,29 +57,22 @@ list_of_data = []
 for _d in data_dir:
     list_of_data += glob.glob(_d+'/data*') 
 list_of_data.sort(key=os.path.getmtime)
-dfs = []
 
 if last_ncycles > 0:
     list_of_data = list_of_data[-last_ncycles:]
-    
-for file_name in list_of_data:
-    df = pd.read_pickle(file_name)
-    dfs.append(df)
 
-if dfs:    
-    df = pd.concat(dfs,ignore_index=True)
-else:
+if len(list_of_data) == 0:
     exit()
 
-b_shape = df['board'][0].shape
+loader = DataLoader(list_of_data)    
 
 if sarsa:
-    _child_stats = np.stack(df['child_stats'].values)
+    _child_stats = loader.child_stats
     n = _child_stats[:,0]
     q = _child_stats[:,3]
     if eligibility_trace:
-        _episode = np.stack(df['episode'].values)
-        _score = np.stack(df['score'].values)
+        _episode = loader.episode
+        _score = loader.score
         _v = np.sum(n * q, axis=1) / np.sum(n, axis=1)
         values = np.zeros(_v.shape)
         for idx, ep in enumerate(_episode):
@@ -95,15 +89,24 @@ if sarsa:
     else:
         values = np.sum(n * q, axis=1) / np.sum(n, axis=1)
 else:
-    values = np.stack(df['cum_score'].values)
+    values = np.zeros((loader.score[0], ), dtype=np.float32)
+    while idx < len(loader.episode):
+        idx_end = idx + 1
+        while idx_end < len(loader.episode):
+            if idx == len(loader.episode) - 1 or loader.episode[idx] != loader.episode[idx+1]:
+                ep_score = loader.score[idx_end]
+                break
+        for _i in range(idx, idx_end+1):
+            values[_i] = ep_score - self.score[_i]
+        idx = idx_end
 
 if backend == 'pytorch':
-    states = np.expand_dims(np.stack(df['board'].values),1).astype(np.float32)
-    policy = np.stack(df['policy'].values).astype(np.float32)
-    values = np.expand_dims(values,-1).astype(np.float32)
+    states = np.expand_dims(loader.board, 1).astype(np.float32)
+    policy = loader.policy.astype(np.float32)
+    values = np.expand_dims(values, -1).astype(np.float32)
 elif backend == 'tensorflow':
-    states = np.expand_dims(np.stack(df['board'].values),-1)
-    policy = np.stack(df['policy'].values)
+    states = np.expand_dims(np.stack(loader.['board'].values),-1)
+    policy = loader.policy
     values = np.expand_dims(values,-1)
 
 #========================
@@ -122,7 +125,7 @@ if shuffle:
 VALIDATION SET
 """
 if val_split_max >= 0:
-    n_data = int(max(len(states) * ( 1 - val_split ),len(states) - val_split_max))
+    n_data = int(max(len(states) * ( 1 - val_split ), len(states) - val_split_max))
 else:
     n_data = int(len(states) * ( 1 - val_split ))
 
@@ -205,7 +208,7 @@ for i in range(iters):
 sys.stdout.write('\n')
 sys.stdout.flush()
 
-if backend =='tensorflow':
+if backend == 'tensorflow':
     m.save(sess)
 elif backend == 'pytorch':
     m.save()

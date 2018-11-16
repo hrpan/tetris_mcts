@@ -1,12 +1,17 @@
 from os.path import dirname
 import os
+import psutil
 import sys
 sys.path.append('../../pyTetris')
 from pyTetris import Tetris
 import numpy as np
 import argparse
-import pandas as pd
+from util.Data import DataSaver
 from importlib import import_module
+
+def usage():
+    process = psutil.Process(os.getpid())
+    return process.memory_info()[0] / float(2 ** 20)
 
 class ScoreTracker:
     def __init__(self):
@@ -34,40 +39,6 @@ class ScoreTracker:
     def reset(self):
         self.scores = []
 
-class DFWrap:
-    def __init__(self, save_dir, save_file, cycle):
-
-        self.cycle = cycle
-
-        cols=['episode','board','policy','action','score','cum_score','child_stats']
-        self.df = pd.DataFrame(columns=cols)
-        cols=['episode','board','policy','action','score','child_stats']
-        self.df_ep = pd.DataFrame(columns=cols)
-
-        self.save_file = save_dir + save_file + str(cycle)
-    
-
-    def add(self, episode, action, agent, game):
-        _dict = {
-                'episode': episode,
-                'board': game.getState(),
-                'policy': agent.get_prob(),
-                'action': action,
-                'score': game.getScore(),
-                'child_stats': agent.get_stats()}
-        self.df_ep = self.df_ep.append(_dict,ignore_index=True)
-
-    def finalizeEpisode(self, score):
-        self.df_ep['cum_score'] = score - self.df_ep['score']
-        self.df = pd.concat([self.df,self.df_ep],ignore_index=True)
-        self.df_ep = self.df_ep[0:0]
-
-    def save(self):
-        self.df['cycle'] = self.cycle
-        if os.path.isfile(self.save_file):
-            df_old = pd.read_pickle(self.save_file)
-            self.df = pd.concat([df_old,self.df],ignore_index=True)
-        self.df.to_pickle(self.save_file)
 """
 ARGUMENTS
 """
@@ -115,7 +86,7 @@ if selfplay:
     agent.set_root(game)
 
 if save:
-    df = DFWrap(save_dir, save_file, cycle)
+    saver = DataSaver(save_dir, save_file, cycle)
 
 tracker = ScoreTracker()
 
@@ -136,7 +107,7 @@ while True:
         action = agent.play()
 
         if save:
-            df.add(ngames,action,agent,game)    
+            saver.add(ngames,action,agent,game)    
 
     game.play(action)
     
@@ -154,8 +125,8 @@ while True:
             ngames -= 1
 
             if save:
-                df.finalizeEpisode(game.getScore())
-
+                saver.save_episode()
+                print(usage())
             tracker.append(game.getScore())
             tracker.printStats()
 
@@ -170,4 +141,4 @@ sys.stdout.flush()
 
 
 if save:
-   df.save() 
+   saver.close() 
