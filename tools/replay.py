@@ -5,6 +5,8 @@ import pandas as pd
 import argparse
 import glob
 import time
+sys.path.append('.')
+from util.Data import DataLoader
 from tkinter import *
 
 """
@@ -13,7 +15,7 @@ ARG PARSE
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--backend', default='pytorch',help='DL backend')
-parser.add_argument('--data_paths', default=['./data'],nargs='*',help='Data paths')
+parser.add_argument('--data_paths', default=[],nargs='*',help='Data paths')
 parser.add_argument('--inference', default=False, help='Real time inference', action='store_true')
 args = parser.parse_args()
 
@@ -42,40 +44,6 @@ elif backend == 'pytorch':
     m.load()
 
 
-class Data:
-    def __init__(self,data_paths=None):
-        self.data_paths = data_paths
-        self.index = 0 
-        self.load_data()
-
-    def load_data(self):
-        list_of_data = [f for p in self.data_paths for f in sorted(glob.glob(p+'/data*'), key=os.path.getmtime)]
-        dfs = [pd.read_pickle(f) for f in list_of_data]
-
-        self.data = pd.concat(dfs,ignore_index=True)
-
-        self.length = self.data.shape[0]
-
-    def bound_index(self,index):
-        if index >= self.length:
-            return self.length-1
-        elif index < 0:
-            return 0
-        else:
-            return index
-
-    def getBoard(self,index):
-        index = self.bound_index(index)
-        return self.data['board'][index]
-
-    def getPolicy(self,index):
-        index = self.bound_index(index)
-        return self.data['policy'][index]
-
-    def getCycle(self,index):
-        index = self.bound_index(index)
-        return self.data['cycle'][index]
-
 def drawBoard(board,canvas,b_pix=20):
     canvas.delete('all')
     h, w = board.shape
@@ -102,7 +70,11 @@ update_interval = 25
 if __name__ == '__main__':
     master = Tk()
     master.title('Replay')
-    data = Data(data_paths)
+
+    list_of_data = []
+    for path in data_paths:
+        list_of_data += glob.glob(path)
+    data = DataLoader(data_paths)
 
     canvas_frame = Frame(master)
     canvas_frame.grid(row=0,column=0,rowspan=10,columnspan=5)
