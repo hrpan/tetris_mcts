@@ -39,16 +39,18 @@ class DFWrap:
 
         self.cycle = cycle
 
-        cols=['board','policy','action','score','cum_score','child_stats']
+        cols=['episode','board','policy','action','score','cum_score','child_stats']
         self.df = pd.DataFrame(columns=cols)
-        cols=['board','policy','action','score','child_stats']
+        cols=['episode','board','policy','action','score','child_stats']
         self.df_ep = pd.DataFrame(columns=cols)
 
         self.save_file = save_dir + save_file + str(cycle)
     
 
-    def add(self, action, agent, game):
-        _dict = {'board': game.getState(),
+    def add(self, episode, action, agent, game):
+        _dict = {
+                'episode': episode,
+                'board': game.getState(),
                 'policy': agent.get_prob(),
                 'action': action,
                 'score': game.getScore(),
@@ -72,7 +74,7 @@ ARGUMENTS
 parser = argparse.ArgumentParser()
 parser.add_argument('--agent_type', default='Vanilla', type=str, help='Which agent to use')
 parser.add_argument('--app', default=1, type=int, help='Actions-per-drop')
-parser.add_argument('--cycle', default=-1, type=int, help='Number of cycle')
+parser.add_argument('--cycle', default=0, type=int, help='Number of cycle')
 parser.add_argument('--gamma', default=0.9, type=float, help='Discount factor')
 parser.add_argument('--interactive', default=False, help='Text interactive interface', action='store_true')
 parser.add_argument('--mcts_const', default=5.0, type=float, help='PUCT constant')
@@ -134,7 +136,7 @@ while True:
         action = agent.play()
 
         if save:
-            df.add(action,agent,game)    
+            df.add(ngames,action,agent,game)    
 
     game.play(action)
     
