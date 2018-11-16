@@ -1,6 +1,5 @@
 from os.path import dirname
 import os
-import psutil
 import sys
 sys.path.append('../../pyTetris')
 from pyTetris import Tetris
@@ -8,10 +7,6 @@ import numpy as np
 import argparse
 from util.Data import DataSaver
 from importlib import import_module
-
-def usage():
-    process = psutil.Process(os.getpid())
-    return process.memory_info()[0] / float(2 ** 20)
 
 class ScoreTracker:
     def __init__(self):
@@ -126,7 +121,6 @@ while True:
 
             if save:
                 saver.save_episode()
-                print(usage())
             tracker.append(game.getScore())
             tracker.printStats()
 
