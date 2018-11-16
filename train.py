@@ -15,11 +15,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--backend', default='pytorch', type=str, help='DL backend')
 parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default:32)')
 parser.add_argument('--cycle', default=-1, type=int, help='Cycle (default:-1)')
-parser.add_argument('--data_dir', default=['./data'], nargs='*', help='Training data directories (default:./data/ep*)')
+parser.add_argument('--data_paths', default=[], nargs='*', help='Training data paths (default: empty list)')
 parser.add_argument('--eligibility_trace', default=False, action='store_true', help='Use eligibility trace')
 parser.add_argument('--eligibility_trace_lambda', default=0.9, type=float, help='Lambda in eligibility trace (default:0.9)')
 parser.add_argument('--epochs', default=10, type=int, help='Training epochs (default:10)')
-parser.add_argument('--last_ncycles', default=1, type=int, help='Use last n cycles in training only (default:1, -1 for all)')
+parser.add_argument('--last_nfiles', default=1, type=int, help='Use last n files in training only (default:1, -1 for all)')
 parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
 parser.add_argument('--val_split', default=0.1, type=float, help='Split ratio for validation data')
@@ -34,11 +34,11 @@ args = parser.parse_args()
 backend = args.backend
 batch_size = args.batch_size
 cycle = args.cycle
-data_dir = args.data_dir
+data_paths = args.data_paths
 eligibility_trace = args.eligibility_trace
 eligibility_trace_lambda = args.eligibility_trace_lambda
 epochs = args.epochs
-last_ncycles = args.last_ncycles
+last_nfiles = args.last_nfiles
 max_iters = args.max_iters
 new = args.new
 val_split = args.val_split
@@ -54,12 +54,12 @@ shuffle = args.shuffle
 LOAD DATA 
 """
 list_of_data = []
-for _d in data_dir:
-    list_of_data += glob.glob(_d+'/data*') 
+for path in data_paths:
+    list_of_data += glob.glob(path) 
 list_of_data.sort(key=os.path.getmtime)
 
-if last_ncycles > 0:
-    list_of_data = list_of_data[-last_ncycles:]
+if last_nfiles > 0:
+    list_of_data = list_of_data[-last_nfiles:]
 
 if len(list_of_data) == 0:
     exit()
@@ -105,7 +105,7 @@ if backend == 'pytorch':
     policy = loader.policy.astype(np.float32)
     values = np.expand_dims(values, -1).astype(np.float32)
 elif backend == 'tensorflow':
-    states = np.expand_dims(np.stack(loader.['board'].values),-1)
+    states = np.expand_dims(np.stack(loader['board'].values),-1)
     policy = loader.policy
     values = np.expand_dims(values,-1)
 
