@@ -70,26 +70,26 @@ class DataLoader:
         for f in self.files:
             f.close()
 
-        def bound_index(self, index):
-            if index >= self.length:
-                return self.length - 1
-            elif index < 0:
-                return 0
-            else:
-                return index
+    def bound_index(self, index):
+        if index >= self.length:
+            return self.length - 1
+        elif index < 0:
+            return 0
+        else:
+            return index
 
-        def getBoard(self, index)
-            index = self.bound_index(index)
-            return self.board[index]
+    def getBoard(self, index):
+        index = self.bound_index(index)
+        return self.board[index]
 
-        def getPolicy(self, index)
-            index = self.bound_index(index)
-            return self.policy[index]
+    def getPolicy(self, index):
+        index = self.bound_index(index)
+        return self.policy[index]
 
-        def getCycle(self, index)
-            index = self.bound_index(index)
-            return self.cycle[index]
+    def getCycle(self, index):
+        index = self.bound_index(index)
+        return self.cycle[index]
 
-        def getScore(self, index)
-            index = self.bound_index(index)
-            return self.score[index]
+    def getScore(self, index):
+        index = self.bound_index(index)
+        return self.score[index]
