@@ -4,10 +4,11 @@ trap 'pkill -P $$' EXIT
 
 n_worker=1
 ngames=500
-n_sims=400
+n_sims=300
 n_sims_bench=1500
 curr_cycle=1
 agent_type=ValueSim
+
 while getopts ":cr" opt;do
     case $opt in
         c)
@@ -31,18 +32,18 @@ done
 DATA_PATHS=""
 for ((i=1; i<=${n_worker}; i++)){
     mkdir -p data/self${i}
-    DATA_PATHS+=" data/self${i}" 
+    DATA_PATHS+=" data/self${i}/*" 
 }
 mkdir -p data/benchmark
 
 for ((x=$curr_cycle; x<200; x++)){
     echo Cycle $x 
-    python train.py --sarsa --save_loss --batch_size 32 --max_iters 200000 --epochs 3 --data_dir $DATA_PATHS --val_split 0.01 --last_ncycles $n_worker --val_total 50 --save_interval 250 >> logs/log_train
+    python train.py --sarsa --save_loss --batch_size 32 --max_iters 200000 --epochs 5 --data_paths $DATA_PATHS --val_split 0.01 --last_nfiles $n_worker --val_total 100 --save_interval 250 >> logs/log_train
 
     for ((i=1; i<=$n_worker; i++)){
         python play.py --agent_type $agent_type --cycle $x --selfplay --ngames $ngames --mcts_sims $n_sims --save --save_dir data/self$i/ >> logs/log_$i 2>> logs/log_err &
     }
-    python play.py --agent_type $agent_type --cycle $x --selfplay --ngames 1 --mcts_sims $n_sims_bench --save --save_dir data/benchmark/ >> logs/log_benchmark 2>> logs/log_err
+    #python play.py --agent_type $agent_type --cycle $x --selfplay --ngames 1 --mcts_sims $n_sims_bench --save --save_dir data/benchmark/ >> logs/log_benchmark 2>> logs/log_err
     wait
 }
 
