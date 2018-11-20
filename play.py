@@ -2,7 +2,8 @@ from os.path import dirname
 import os
 import sys
 sys.path.append('../../pyTetris')
-from pyTetris import Tetris
+#from pyTetris import Tetris
+from nbTetris import Tetris
 import numpy as np
 import argparse
 from util.Data import DataSaver
@@ -72,12 +73,13 @@ selfplay = args.selfplay
 """
 SOME INITS
 """
-game = Tetris(boardsize=(22,10),actions_per_drop=app)
+env_args = ((22,10), app)
+game = Tetris(*env_args)
 
 if selfplay:
     _agent_module = import_module('agents.'+agent_type)
     Agent = getattr(_agent_module,agent_type)
-    agent = Agent(mcts_const,mcts_sims,tau=mcts_tau)
+    agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args)
     agent.set_root(game)
 
 if save:
