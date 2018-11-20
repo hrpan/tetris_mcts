@@ -7,12 +7,15 @@ n_actions = 6
 
 class Agent:
 
-    def __init__(self,sims,init_nodes=500000,backend='tensorflow'):
+    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1)):
 
         self.sims = sims
         
         self.init_nodes = init_nodes
         self.backend = backend
+
+        self.env = env
+        self.env_args = env_args
 
         self.init_array()
         self.init_model()
@@ -27,8 +30,8 @@ class Agent:
                 'child_stats':child_stats_arr,
                 'node_stats':node_stats_arr,
                 }
-        
-        self.game_arr = [None] * self.init_nodes
+
+        self.game_arr = [self.env(*self.env_args) for i in range(self.init_nodes)]
 
         self.available = [i for i in range(1,self.init_nodes)]
         self.occupied = [0]
@@ -84,7 +87,7 @@ class Agent:
             _temp_arr = np.zeros(_new_s,dtype=arr.dtype)
             self.arrs[k] = np.concatenate([arr,_temp_arr])
 
-        self.game_arr += [None] * n_nodes
+        self.game_arr += [self.env(*self.env_args) for i in range(n_nodes)]
         self.available += [i for i in range(self.max_nodes,self.max_nodes+n_nodes)]
         self.max_nodes += n_nodes
 
@@ -104,11 +107,11 @@ class Agent:
                     self.expand_nodes()
                     idx = self.available.pop()
 
-            _g = game.clone()
+            _g = self.game_arr[idx]
+
+            _g.copy_from(game)
 
             self.node_index_dict[_g] = idx
-
-            self.game_arr[idx] = _g
 
             self.occupied.append(idx)
 
@@ -173,7 +176,7 @@ class Agent:
 
             del self.node_index_dict[_g]
 
-            self.game_arr[idx] = None
+            #self.game_arr[idx] = None
 
             self.arrs['child'][idx] = 0
             self.arrs['child_stats'][idx] = 0

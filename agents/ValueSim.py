@@ -6,10 +6,11 @@ n_actions = 6
 
 class ValueSim(Agent):
 
-    def __init__(self,conf,sims,tau=None,backend='pytorch'):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None):
 
-        super().__init__(sims=sims,backend=backend)
+        super().__init__(sims=sims,backend=backend,env=env, env_args=env_args)
 
+        self.g_tmp = env(*env_args) 
     def mcts(self,root_index):
 
         _child = self.arrs['child']
@@ -24,21 +25,20 @@ class ValueSim(Agent):
 
         value = leaf_game.getScore() #- self.game_arr[root_index].getScore()
 
-
         if not leaf_game.end:
 
             v, p = self.evaluate_state(leaf_game.getState())
 
             value += v
-
+            
+            _g = self.g_tmp
             for i in range(n_actions):
-                _g = leaf_game.clone()
+                _g.copy_from(leaf_game)
                 _g.play(i)
                 _n = self.new_node(_g)
-
                 _child[leaf_index][i] = _n
                 _node_stats[_n][2] = _g.getScore()
-            
+
         backup_trace(trace, _node_stats, value)
 
     def compute_stats(self):
@@ -59,3 +59,4 @@ class ValueSim(Agent):
             _stats[5][i] = _ns[_idx][4]
 
         return _stats
+        
