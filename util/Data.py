@@ -1,6 +1,12 @@
 import tables
 import numpy as np
 
+def keyFile(s):
+    for i, c in enumerate(s):
+        if c.isdigit() and s[i-4:i] == 'data':
+            break
+    return int(s[i:])
+
 class State(tables.IsDescription):
     episode     = tables.Int32Col()
     board       = tables.Int8Col(shape=(22, 10))
@@ -52,7 +58,9 @@ class DataSaver:
 class DataLoader:
     
     def __init__(self, list_of_files):
-    
+
+        list_of_files = sorted(list_of_files, key=keyFile)
+ 
         self.files = [ tables.open_file(f, mode='r') for f in list_of_files]
 
         self.tables = [f.root.State for f in self.files]
@@ -77,7 +85,7 @@ class DataLoader:
             return 0
         else:
             return index
-
+    
     def getBoard(self, index):
         index = self.bound_index(index)
         return self.board[index]
@@ -93,3 +101,5 @@ class DataLoader:
     def getScore(self, index):
         index = self.bound_index(index)
         return self.score[index]
+
+        
