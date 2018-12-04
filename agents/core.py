@@ -40,7 +40,7 @@ def select_index(index,child,node_stats):
 
         has_unvisited_node = False
 
-        _stats = np.zeros((2,len_c))
+        _stats = np.zeros((2, len_c), dtype=np.float32)
 
         _max = 1.0
 
@@ -201,8 +201,8 @@ def _tmp_func(stats, act, node_stats, childs):
         stats[1][act] += childs[i][1] * node[1] / node[0]
         stats[2][act] += childs[i][1] * node[4] * np.sqrt( 1 / node[0] )
         q_max = max(q_max, node[4])
-    stats[1][act] /= stats[0][act]
-    stats[2][act] /= stats[0][act]
+    stats[1][act] /= (stats[0][act]+eps)
+    stats[2][act] /= (stats[0][act]+eps)
     stats[3][act] = len(childs)
 
     return q_max 
@@ -232,8 +232,7 @@ def select_index_2(game, node_dict, node_stats, child_info):
             _stats_tmp = np.zeros((4, n_actions), dtype=np.float32)
 
             _max = max([_tmp_func(_stats_tmp, i, node_stats, child_info[idx][i]) for i in range(n_actions)])
-            _a = _tmp_select(_stats_tmp, _max)           
-
+            _a = _tmp_select(_stats_tmp, _max)          
         action.append(_a)
 
         game.play(_a)
