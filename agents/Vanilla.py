@@ -6,9 +6,11 @@ from random import randint
 n_actions = 6
 
 class Vanilla(Agent):
-    def __init__(self,conf,sims,tau=None,gamma=0.99):
+    def __init__(self, conf, sims, tau=None, env=None, env_args=None):
 
-        super().__init__(sims=sims,backend=None)
+        super().__init__(sims=sims, backend=None, env=env, env_args=env_args)
+
+        self.g_tmp = env(*env_args)
 
     def mcts(self,root_index):
         trace = select_index(root_index,self.arrs['child'],self.arrs['node_stats'])
@@ -20,12 +22,12 @@ class Vanilla(Agent):
 
         value = leaf_game.getScore() #- self.game_arr[root_index].getScore()
 
-
         if not leaf_game.end:
 
             #v, p = self.evaluate_state(leaf_game.getState())
 
-            _g = leaf_game.clone()
+            _g = self.g_tmp
+            _g.copy_from(leaf_game)
 
             while not _g.end:
                 _act = randint(0,n_actions-1)
@@ -34,7 +36,7 @@ class Vanilla(Agent):
             value = _g.getScore()
 
             for i in range(n_actions):
-                _g = leaf_game.clone()
+                _g.copy_from(leaf_game)
                 _g.play(i)
                 _n = self.new_node(_g)
 
