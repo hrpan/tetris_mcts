@@ -43,7 +43,7 @@ for ((x=$curr_cycle; x<200; x++)){
     for ((i=1; i<=$n_worker; i++)){
         python play.py --agent_type $agent_type --cycle $x --selfplay --ngames $ngames --mcts_sims $n_sims --save --save_dir data/self$i/ >> logs/log_$i 2>> logs/log_err &
     }
-    #python play.py --agent_type $agent_type --cycle $x --selfplay --ngames 1 --mcts_sims $n_sims_bench --save --save_dir data/benchmark/ >> logs/log_benchmark 2>> logs/log_err
+    python play.py --agent_type $agent_type --cycle $x --selfplay --ngames 1 --mcts_sims $n_sims_bench --save --save_dir data/benchmark/ >> logs/log_benchmark 2>> logs/log_err
     wait
 }
 
