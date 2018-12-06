@@ -19,11 +19,10 @@ class ValueSim(Agent):
         trace = select_index(root_index, _child, _node_stats)
 
         leaf_index = trace[-1]
-        #leaf_index = select_index(root_index,self.arrs['child'],self.arrs['child_stats'])
 
         leaf_game = self.game_arr[leaf_index]
 
-        value = leaf_game.getScore() #- self.game_arr[root_index].getScore()
+        value = leaf_game.getScore()
 
         if not leaf_game.end:
 
@@ -42,7 +41,7 @@ class ValueSim(Agent):
         backup_trace(trace, _node_stats, value)
 
     def compute_stats(self):
-        _stats = np.zeros((6, n_actions))
+        _stats = np.zeros((6, n_actions), dtype=np.float32)
 
         _childs = self.arrs['child'][self.root]
         _ns = self.arrs['node_stats']
