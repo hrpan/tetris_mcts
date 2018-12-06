@@ -6,7 +6,7 @@ import glob
 import argparse
 import random
 import pandas as pd
-from util.Data import DataLoader
+from util.Data import DataLoader, LossSaver
 from math import ceil
 """
 ARGS
@@ -25,7 +25,7 @@ parser.add_argument('--new', default=False, help='Create a new model instead of 
 parser.add_argument('--val_split', default=0.1, type=float, help='Split ratio for validation data')
 parser.add_argument('--val_split_max', default=-1, type=int, help='Maximum size for validation data (negative for unlimited)')
 parser.add_argument('--val_total', default=25, type=int, help='Total number of validations')
-parser.add_argument('--sarsa', default=False, help='Sarsa update', action='store_true')
+parser.add_argument('--sarsa', default=True, help='Sarsa update', action='store_true')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
 parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
@@ -89,7 +89,7 @@ if sarsa:
     else:
         values = np.sum(n * q, axis=1) / np.sum(n, axis=1)
 else:
-    values = np.zeros((loader.score[0], ), dtype=np.float32)
+    values = np.zeros((len(loader.score), ), dtype=np.float32)
     while idx < len(loader.episode):
         idx_end = idx + 1
         while idx_end < len(loader.episode):
@@ -170,20 +170,18 @@ else:
 
 val_interval = iters // val_total
 
-loss_ma = 0
-decay = 0.99
-
-loss_val = 0
-
 if save_loss:
     #loss_train/loss_value/loss_policy/loss_val/loss_val_v/loss_val_p
-    hist_shape = (int(ceil(iters/save_interval)),6)
+    hist_shape = (int(ceil(iters/save_interval)), 6)
     loss_history = np.empty(hist_shape)
 
 #=========================
 """
 TRAINING ITERATION
 """
+loss_ma = 0
+decay = 0.99
+loss_val = 0
 
 for i in range(iters):
     idx = np.random.randint(n_data,size=batch_size)
@@ -203,7 +201,12 @@ for i in range(iters):
         
     if i % save_interval == 0 and save_loss:
         _idx = i // save_interval
-        loss_history[_idx] = (loss,loss_v,loss_p,loss_val,loss_val_v,loss_val_p)
+        loss_history[_idx] = (loss, 
+            loss_v, 
+            loss_p,
+            loss_val,
+            loss_val_v,
+            loss_val_p)
 
 sys.stdout.write('\n')
 sys.stdout.flush()
@@ -213,19 +216,11 @@ if backend == 'tensorflow':
 elif backend == 'pytorch':
     m.save()
 
+
 if save_loss:
-    loss_file = 'data/loss'
-    cols = ['loss',
-            'loss_value',
-            'loss_policy',
-            'loss_val',
-            'loss_val_value',
-            'loss_val_policy']
-    df = pd.DataFrame(data=loss_history,columns=cols)
-    if os.path.isfile(loss_file):
-        df_old = pd.read_pickle(loss_file)
-        df = pd.concat([df_old,df],ignore_index=True)
-    df.to_pickle(loss_file)
+    loss_saver = LossSaver(cycle)
+    loss_saver.add(loss_history)
+    loss_saver.close()
 
 sys.stdout.write('\n')
 sys.stdout.flush()
