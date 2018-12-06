@@ -16,6 +16,16 @@ class State(tables.IsDescription):
     child_stats = tables.Float32Col(shape=(6, 6))
     cycle       = tables.Int32Col() 
 
+class Loss(tables.IsDescription):
+    loss               = tables.Float32Col()
+    loss_value         = tables.Float32Col()
+    loss_value_var     = tables.Float32Col()
+    loss_policy        = tables.Float32Col() 
+    loss_val           = tables.Float32Col()
+    loss_val_value     = tables.Float32Col()
+    loss_val_value_var = tables.Float32Col()
+    loss_val_policy    = tables.Float32Col()
+    cycle              = tables.Int32Col()
 
 class DataSaver:
 
@@ -102,4 +112,40 @@ class DataLoader:
         index = self.bound_index(index)
         return self.score[index]
 
+class LossSaver:
+
+    def __init__(self, cycle):
+
+        self.cycle = cycle
+
+        self.file = tables.open_file('data/loss', mode='a')
         
+        if self.file.__contains__('/Loss'):
+            self.table = self.file.root.Loss
+        else:
+            self.table = self.file.create_table(self.file.root, 'Loss', Loss)
+
+        self.loss = self.table.row
+
+    def add(self, losses):
+        for l in losses:
+            self.loss['loss'] = l[0]
+            self.loss['loss_value'] = l[1]
+            self.loss['loss_value_var'] = l[2]
+            self.loss['loss_policy'] = l[3]
+            self.loss['loss_val'] = l[4]
+            self.loss['loss_val_value'] = l[5]
+            self.loss['loss_val_value_var'] = l[6]
+            self.loss['loss_val_policy'] = l[7]
+            self.loss['cycle'] = self.cycle
+
+            self.state.append()
+
+        self.table.flush()
+
+    def close(self):
+    
+        self.file.close()
+
+
+
