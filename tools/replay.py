@@ -65,7 +65,7 @@ def drawPolicy(policy,canvas,blocksize=30,offset_x=10,offset_y=100):
         canvas.create_rectangle(offset_x+i*blocksize,offset_y,offset_x+(i+1)*blocksize,offset_y+blocksize,fill=color)
 
 index = 0
-update_interval = 25
+update_interval = 5
 
 if __name__ == '__main__':
     master = Tk()
@@ -91,15 +91,15 @@ if __name__ == '__main__':
     control_frame_2 = Frame(master)
     control_frame_2.grid(row=2,column=5,rowspan=1,columnspan=5)
 
+    list_of_updates = []
+
     board_canvas = Canvas(canvas_frame,width=200,height=440)
     board_canvas.grid(row=1,column=1)
-    def update_board_canvas():
-        global index
+    def update_board_canvas(index):
         global data
         board = data.getBoard(index)
         drawBoard(board,board_canvas)
-        board_canvas.after(update_interval,update_board_canvas)
-    update_board_canvas()
+    list_of_updates.append(update_board_canvas)
 
     policy_canvas_label = Label(canvas_frame_2,text='Policy MCTS')
     policy_canvas_label.grid(row=0,column=0)
@@ -113,8 +113,7 @@ if __name__ == '__main__':
     value_label.grid(row=4,column=0)
     class_label = Label(canvas_frame_2)
     class_label.grid(row=5,column=0)
-    def update_policy_canvas():
-        global index
+    def update_policy_canvas(index):
         global data
         policy = data.getPolicy(index)
         if inference:
@@ -136,27 +135,27 @@ if __name__ == '__main__':
         drawPolicy(policy_pred,policy_canvas_2,offset_y=0)
         value_label.config(text='Value prediction: %.3f'%value_pred)
         class_label.config(text='Class prediction: %d'%class_pred)
-        policy_canvas.after(update_interval,update_policy_canvas)
-    update_policy_canvas()
+    list_of_updates.append(update_policy_canvas)
 
     current_index_label = Label(info_frame)
     current_index_label.pack()
-    def update_current_index_label():
-        global index
+    def update_current_index_label(index):
         current_index_label.config(text='Current index: %d'%index)
-        current_index_label.after(update_interval,update_current_index_label)        
-    update_current_index_label()
+    list_of_updates.append(update_current_index_label)
 
     current_cycle_label = Label(info_frame)
     current_cycle_label.pack()
-    def update_current_cycle_label():
-        global index
+    def update_current_cycle_label(index):
         global data
-        _c = data.getCycle(index)
-        current_cycle_label.config(text='Current cycle: %d'%_c)
-        current_cycle_label.after(update_interval,update_current_cycle_label)        
-    update_current_cycle_label()
+        current_cycle_label.config(text='Current cycle: %d'%data.getCycle(index))
+    list_of_updates.append(update_current_cycle_label)
    
+    current_score_label = Label(info_frame)
+    current_score_label.pack()
+    def update_current_score_label(index):
+        global data
+        current_score_label.config(text='Current score: %d'%data.getScore(index))
+    list_of_updates.append(update_current_score_label)
 
     def next_index():
         global index
@@ -208,4 +207,10 @@ if __name__ == '__main__':
     interval_entry.bind("<Return>",set_update_interval)
     interval_entry.grid(row=1,column=1)
     """
+    def global_updater():
+        global index
+        for u in list_of_updates:
+            u(index)
+        master.after(update_interval, global_updater)        
+    global_updater()
     mainloop()
