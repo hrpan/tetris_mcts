@@ -43,7 +43,6 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
 
         policy = F.softmax(self.fc_p(x), dim=1)
-        #value = F.relu(self.fc_v(x))
         value = torch.exp(self.fc_v(x))
 
         return value, policy
@@ -56,25 +55,18 @@ class Model:
 
         self.model = Net()
         
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=0.05, momentum=0.9, nesterov=True)
-        #self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer,patience=10,verbose=True)
-        
-        #self.optimizer = optim.Adam(self.model.parameters(), eps=1e-16, amsgrad=True)
         self.optimizer = optim.Adam(self.model.parameters())
         self.scheduler = None
-        #print(self.model)
-        #print(self.optimizer)
-        #if self.scheduler:
-        #    print(self.scheduler)
+
     def _loss(self,batch):
 
         state = convert(batch[0])
         value = convert(batch[1])
-        policy = convert(batch[2])
+        policy = convert(batch[3])
 
         _v, _p = self.model(state)
 
-        loss_v = F.mse_loss(_v,value)
+        loss_v = F.mse_loss(_v, value)
         #loss_v = Variable(torch.FloatTensor([0]))
         #loss_p = F.kl_div(torch.log(_p),policy)
         loss_p = Variable(torch.FloatTensor([0]))
@@ -86,9 +78,11 @@ class Model:
 
         self.model.eval()
 
-        loss, loss_v, loss_p = self._loss(batch)
+        losses = self._loss(batch)
         
-        return loss.data.numpy(), loss_v.data.numpy(), loss_p.data.numpy()
+        result = [l.data.numpy() for l in losses]
+
+        return result
 
     def train(self,batch):
 
@@ -96,13 +90,15 @@ class Model:
 
         self.optimizer.zero_grad()
 
-        loss, loss_v, loss_p = self._loss(batch)
+        losses = self._loss(batch)
 
-        loss.backward()
+        losses[0].backward()
 
         self.optimizer.step()
 
-        return loss.data.numpy(), loss_v.data.numpy(), loss_p.data.numpy()
+        result = [l.data.numpy() for l in losses]
+
+        return result
 
     def inference(self,batch):
 
@@ -113,7 +109,9 @@ class Model:
         with torch.no_grad():
             output = self.model(state)
 
-        return output[0].data.numpy(), output[1].data.numpy()
+        result = [o.data.numpy() for o in output]
+
+        return result
 
     def update_scheduler(self,val_loss):
 
