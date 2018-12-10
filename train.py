@@ -22,10 +22,9 @@ parser.add_argument('--epochs', default=10, type=int, help='Training epochs (def
 parser.add_argument('--last_nfiles', default=1, type=int, help='Use last n files in training only (default:1, -1 for all)')
 parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
-parser.add_argument('--val_split', default=0.1, type=float, help='Split ratio for validation data')
-parser.add_argument('--val_split_max', default=-1, type=int, help='Maximum size for validation data (negative for unlimited)')
-parser.add_argument('--val_total', default=25, type=int, help='Total number of validations')
-parser.add_argument('--sarsa', default=True, help='Sarsa update', action='store_true')
+parser.add_argument('--val_episodes', default=0, type=float, help='Number of validation episodes (default:0)')
+parser.add_argument('--val_total', default=25, type=int, help='Total number of validations (default:25)')
+parser.add_argument('--sarsa', default=False, help='Sarsa update', action='store_true')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
 parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
@@ -41,8 +40,7 @@ epochs = args.epochs
 last_nfiles = args.last_nfiles
 max_iters = args.max_iters
 new = args.new
-val_split = args.val_split
-val_split_max = args.val_split_max
+val_episodes = args.val_episodes
 val_total = args.val_total
 sarsa = args.sarsa
 save_loss = args.save_loss
@@ -124,14 +122,14 @@ if shuffle:
 """
 VALIDATION SET
 """
-if val_split_max >= 0:
-    n_data = int(max(len(states) * ( 1 - val_split ), len(states) - val_split_max))
-else:
-    n_data = int(len(states) * ( 1 - val_split ))
+v_idx = np.where(loader.episode < val_episodes + 1)
+t_idx = np.where(loader.episode >= val_episodes + 1)
 
-batch_val = [states[n_data:], values[n_data:], policy[n_data:]]
+n_data = len(t_idx[0])
 
-batch_train = [states[:n_data], values[:n_data], policy[:n_data]]
+batch_val = [states[v_idx], values[v_idx], policy[v_idx]]
+
+batch_train = [states[t_idx], values[t_idx], policy[t_idx]]
 
 #=========================
 """
@@ -168,7 +166,7 @@ if max_iters >= 0:
 else:
     iters = int(epochs * iters_per_epoch)
 
-val_interval = iters // val_total
+val_interval = iters // val_total + 1
 
 if save_loss:
     #loss_train/loss_value/loss_policy/loss_val/loss_val_v/loss_val_p
@@ -192,7 +190,7 @@ for i in range(iters):
     
     loss_ma = decay * loss_ma + ( 1 - decay ) * loss
     
-    if i % val_interval == 0 and val_split > 0:
+    if i % val_interval == 0 and val_episodes > 0:
         loss_val, loss_val_v, loss_val_p = compute_loss(batch_val)
         scheduler_step(loss_val)
         
