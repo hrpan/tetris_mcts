@@ -19,11 +19,9 @@ class State(tables.IsDescription):
 class Loss(tables.IsDescription):
     loss               = tables.Float32Col()
     loss_value         = tables.Float32Col()
-    loss_value_var     = tables.Float32Col()
     loss_policy        = tables.Float32Col() 
     loss_val           = tables.Float32Col()
     loss_val_value     = tables.Float32Col()
-    loss_val_value_var = tables.Float32Col()
     loss_val_policy    = tables.Float32Col()
     cycle              = tables.Int32Col()
 
@@ -131,15 +129,13 @@ class LossSaver:
         for l in losses:
             self.loss['loss'] = l[0]
             self.loss['loss_value'] = l[1]
-            self.loss['loss_value_var'] = l[2]
-            self.loss['loss_policy'] = l[3]
-            self.loss['loss_val'] = l[4]
-            self.loss['loss_val_value'] = l[5]
-            self.loss['loss_val_value_var'] = l[6]
-            self.loss['loss_val_policy'] = l[7]
+            self.loss['loss_policy'] = l[2]
+            self.loss['loss_val'] = l[3]
+            self.loss['loss_val_value'] = l[4]
+            self.loss['loss_val_policy'] = l[5]
             self.loss['cycle'] = self.cycle
 
-            self.state.append()
+            self.loss.append()
 
         self.table.flush()
 
