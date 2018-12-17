@@ -3,7 +3,7 @@
 trap 'pkill -P $$' EXIT
 
 n_worker=1
-ngames=500
+ngames=100
 n_sims=300
 n_sims_bench=1500
 curr_cycle=1
@@ -38,7 +38,15 @@ mkdir -p data/benchmark
 
 for ((x=$curr_cycle; x<200; x++)){
     echo Cycle $x 
-    python train.py --sarsa --save_loss --batch_size 32 --max_iters 200000 --epochs 5 --data_paths $DATA_PATHS --val_split 0.01 --last_nfiles $n_worker --val_total 100 --save_interval 250 >> logs/log_train
+    python train.py --sarsa \
+        --save_loss \
+        --batch_size 32 \
+        --epochs 5 \
+        --data_paths $DATA_PATHS \
+        --val_episodes 5 \
+        --last_nfiles $n_worker \
+        --val_total 100 \
+        --save_interval 250 >> logs/log_train 2>> logs/log_err
 
     for ((i=1; i<=$n_worker; i++)){
         python play.py --agent_type $agent_type --cycle $x --selfplay --ngames $ngames --mcts_sims $n_sims --save --save_dir data/self$i/ >> logs/log_$i 2>> logs/log_err &
