@@ -65,10 +65,11 @@ if len(list_of_data) == 0:
 loader = DataLoader(list_of_data)    
 
 if sarsa:
-    _child_stats = loader.child_stats
-    n = _child_stats[:,0]
-    q = _child_stats[:,3]
     if eligibility_trace:
+        _child_stats = loader.child_stats
+        n = _child_stats[:,0]
+        q = _child_stats[:,3]
+
         _episode = loader.episode
         _score = loader.score
         _v = np.sum(n * q, axis=1) / np.sum(n, axis=1)
@@ -85,7 +86,9 @@ if sarsa:
                 weight *= eligibility_trace_lambda
             values[idx] = _sum / _weight_sum
     else:
-        values = np.sum(n * q, axis=1) / np.sum(n, axis=1)
+        values = loader.value
+        variance = loader.variance
+        print(values.shape, variance.shape)
 else:
     values = np.zeros((len(loader.score), ), dtype=np.float32)
     while idx < len(loader.episode):
@@ -117,7 +120,7 @@ if shuffle:
     states = states[indices]
     policy = policy[indices]
     values = values[indices]
-
+    variance = variance[indices]
 #=========================
 """
 VALIDATION SET
@@ -127,9 +130,9 @@ t_idx = np.where(loader.episode >= val_episodes + 1)
 
 n_data = len(t_idx[0])
 
-batch_val = [states[v_idx], values[v_idx], policy[v_idx]]
+batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx]]
 
-batch_train = [states[t_idx], values[t_idx], policy[t_idx]]
+batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx]]
 
 #=========================
 """
@@ -169,8 +172,8 @@ else:
 val_interval = iters // val_total + 1
 
 if save_loss:
-    #loss_train/loss_value/loss_policy/loss_val/loss_val_v/loss_val_p
-    hist_shape = (int(ceil(iters/save_interval)), 6)
+    #loss/loss_v/loss_var/loss_p
+    hist_shape = (int(ceil(iters/save_interval)), 8)
     loss_history = np.empty(hist_shape)
 
 #=========================
@@ -186,12 +189,12 @@ for i in range(iters):
 
     batch = [_arr[idx] for _arr in batch_train]
 
-    loss, loss_v, loss_p = train_step(batch,i)
+    loss, loss_v, loss_var, loss_p = train_step(batch,i)
     
     loss_ma = decay * loss_ma + ( 1 - decay ) * loss
     
     if i % val_interval == 0 and val_episodes > 0:
-        loss_val, loss_val_v, loss_val_p = compute_loss(batch_val)
+        loss_val, loss_val_v, loss_val_var, loss_val_p = compute_loss(batch_val)
         scheduler_step(loss_val)
         
     sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i,iters,loss_ma,loss_val))
@@ -201,9 +204,11 @@ for i in range(iters):
         _idx = i // save_interval
         loss_history[_idx] = (loss, 
             loss_v, 
+            loss_var,
             loss_p,
             loss_val,
             loss_val_v,
+            loss_val_var,
             loss_val_p)
 
 sys.stdout.write('\n')
