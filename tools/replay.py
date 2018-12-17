@@ -212,5 +212,5 @@ if __name__ == '__main__':
         for u in list_of_updates:
             u(index)
         master.after(update_interval, global_updater)        
-    global_updater()
+    master.after(update_interval, global_updater)        
     mainloop()
