@@ -8,28 +8,32 @@ def keyFile(s):
     return int(s[i:])
 
 class State(tables.IsDescription):
-    episode     = tables.Int32Col()
-    board       = tables.Int8Col(shape=(22, 10))
-    policy      = tables.Float32Col(shape=(6,))
-    action      = tables.Int8Col()
-    score       = tables.Int32Col()
-    child_stats = tables.Float32Col(shape=(6, 6))
-    cycle       = tables.Int32Col() 
+    episode        = tables.Int32Col()
+    board          = tables.Int8Col(shape=(22, 10))
+    policy         = tables.Float32Col(shape=(6,))
+    action         = tables.Int8Col()
+    score          = tables.Int32Col()
+    child_stats    = tables.Float32Col(shape=(6, 6))
+    cycle          = tables.Int32Col() 
+    value          = tables.Float32Col()
+    variance       = tables.Float32Col()
 
 class Loss(tables.IsDescription):
-    loss               = tables.Float32Col()
-    loss_value         = tables.Float32Col()
-    loss_policy        = tables.Float32Col() 
-    loss_val           = tables.Float32Col()
-    loss_val_value     = tables.Float32Col()
-    loss_val_policy    = tables.Float32Col()
-    cycle              = tables.Int32Col()
+    loss_train               = tables.Float32Col()
+    loss_train_value         = tables.Float32Col()
+    loss_train_variance      = tables.Float32Col()
+    loss_train_policy        = tables.Float32Col() 
+    loss_validation          = tables.Float32Col()
+    loss_validation_value    = tables.Float32Col()
+    loss_validation_variance = tables.Float32Col()
+    loss_validation_policy   = tables.Float32Col()
+    cycle                    = tables.Int32Col()
 
 class DataSaver:
 
     def __init__(self, save_dir, save_file, cycle):
 
-        file_name = save_dir + save_file + str(cycle)
+        file_name = save_dir + save_file + str(cycle) 
 
         self.cycle = cycle
 
@@ -51,6 +55,9 @@ class DataSaver:
         self.state['score'] = game.getScore()
         self.state['child_stats'] = agent.get_stats()         
         self.state['cycle'] = self.cycle
+        v, var = agent.get_value()
+        self.state['value'] = v
+        self.state['variance'] = var
 
         self.state.append()
 
@@ -80,7 +87,9 @@ class DataLoader:
         self.score = np.concatenate([t.col('score') for t in self.tables])
         self.child_stats = np.concatenate([t.col('child_stats') for t in self.tables])
         self.cycle = np.concatenate([t.col('cycle') for t in self.tables])
-
+        self.value = np.concatenate([t.col('value') for t in self.tables])
+        self.variance = np.concatenate([t.col('variance') for t in self.tables])
+        
         self.length = len(self.episode)
 
         for f in self.files:
@@ -127,12 +136,14 @@ class LossSaver:
 
     def add(self, losses):
         for l in losses:
-            self.loss['loss'] = l[0]
-            self.loss['loss_value'] = l[1]
-            self.loss['loss_policy'] = l[2]
-            self.loss['loss_val'] = l[3]
-            self.loss['loss_val_value'] = l[4]
-            self.loss['loss_val_policy'] = l[5]
+            self.loss['loss_train'] = l[0]
+            self.loss['loss_train_value'] = l[1]
+            self.loss['loss_train_variance'] = l[2]
+            self.loss['loss_train_policy'] = l[3]
+            self.loss['loss_validation'] = l[4]
+            self.loss['loss_validation_value'] = l[5]
+            self.loss['loss_validation_variance'] = l[6]
+            self.loss['loss_validation_policy'] = l[7]
             self.loss['cycle'] = self.cycle
 
             self.loss.append()
