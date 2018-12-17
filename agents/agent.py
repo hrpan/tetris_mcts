@@ -71,10 +71,10 @@ class Agent:
 
     def evaluate_state(self,state):
 
-        v, p = self.inference(state)
+        v, var, p = self.inference(state)
             
 
-        return v[0][0], p[0]
+        return v[0][0], var[0][0], p[0]
 
     def expand_nodes(self,n_nodes=10000):
 
@@ -159,6 +159,12 @@ class Agent:
     def get_stats(self):
 
         return np.copy(self.stats)
+
+    def get_value(self):
+
+        sys.stderr.write('\nWATNING: get_value not implemented for this agent\n')
+
+        return 0, 0
 
     def remove_nodes(self):
 
