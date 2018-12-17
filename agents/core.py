@@ -241,4 +241,65 @@ def select_index_2(game, node_dict, node_stats, child_info):
 
     return trace, action
 
+@jit(nopython=True,cache=True)
+def select_index_3(index,child,node_stats):
+
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        _child_nodes = []
+        for i in range(n_actions):
+            if child[index][i] != 0:
+                _child_nodes.append(child[index][i])
+
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
+            break
+
+        has_unvisited_node = False
+
+        _stats = np.zeros((2, len_c), dtype=np.float32)
+
+        for i in range(len_c):
+            _idx = _child_nodes[i]
+            if node_stats[_idx][0] == 0:
+                index = _idx
+                has_unvisited_node = True
+                break
+            _stats[0][i] = node_stats[_idx][1]
+            _stats[1][i] = np.sqrt(node_stats[_idx][3] / node_stats[_idx][0])
+
+        if has_unvisited_node:
+            continue
+
+
+        _c = _stats[1]
+
+        _q = _stats[0]
+
+        _v = _q + _c 
+        
+        _a = np.argmax(_v)
+
+        index = _child_nodes[_a]
+
+    return trace
+
+@jit(nopython=True,cache=True)
+def backup_trace_3(trace,node_stats,value):
+    alpha = 0.01
+    for idx in trace:
+        v = value - node_stats[idx][2] 
+        if node_stats[idx][0] == 0:
+            node_stats[idx][1] = v 
+        else:
+            _v = v - node_stats[idx][1]
+            node_stats[idx][1] += alpha * _v
+            node_stats[idx][3] = (1-alpha) * (node_stats[idx][3] + alpha * _v * _v)
+        node_stats[idx][0] += 1
+        node_stats[idx][4] = max(v,node_stats[idx][4])
 
