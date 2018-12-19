@@ -21,7 +21,7 @@ class Net(torch.jit.ScriptModule):
         
         kernel_size = 3
         stride = 1
-        filters = 16
+        filters = 32
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
         self.bn1 = nn.BatchNorm2d(filters)
         _shape = convOutShape((22,10), kernel_size, stride)
@@ -29,27 +29,29 @@ class Net(torch.jit.ScriptModule):
         self.bn2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
        
-        self.flat_in = _shape[0] * _shape[1] * filters
-        self.flat_out = 64
-        self.fc1 = nn.Linear(self.flat_in, self.flat_out)
-        #self.flat_out = self.flat_in
+        flat_in = _shape[0] * _shape[1] * filters
+
+        n_fc1 = 128
+        self.fc1 = nn.Linear(flat_in, n_fc1)
+        
+        flat_out = n_fc1
  
-        self.fc_p = nn.Linear(self.flat_out, 6)
-        self.fc_v = nn.Linear(self.flat_out, 1)
-        self.fc_var = nn.Linear(self.flat_out, 1)
+        self.fc_p = nn.Linear(flat_out, 6)
+        self.fc_v = nn.Linear(flat_out, 1)
+        self.fc_var = nn.Linear(flat_out, 1)
 
 
     @torch.jit.script_method
     def forward(self, x):
         x = self.bn1(F.relu(self.conv1(x)))
         x = self.bn2(F.relu(self.conv2(x)))
-        x = x.view(-1, 1728)
+        x = x.view(-1, 3456)
 
-        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc1(x))        
 
         policy = F.softmax(self.fc_p(x), dim=1)
-        value = torch.exp(self.fc_v(x))
-        var = torch.exp(self.fc_var(x))
+        value = self.fc_v(x)
+        var = self.fc_var(x)
         return value, var, policy
 
 def convert(x):
@@ -59,8 +61,14 @@ class Model:
     def __init__(self,new=True):
 
         self.model = Net()
-        self.optimizer = optim.Adam(self.model.parameters())
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
         self.scheduler = None
+
+        self.v_mean = 0
+        self.v_std = 1
+
+        self.var_mean = 3
+        self.var_std = 1
 
     def _loss(self,batch):
 
@@ -116,6 +124,8 @@ class Model:
             output = self.model(state)
 
         result = [o.data.numpy() for o in output]
+        result[0] = result[0] * self.v_std + self.v_mean
+        result[1] = result[1] * self.var_std + self.var_mean
 
         return result
 
@@ -139,6 +149,10 @@ class Model:
         full_state = {
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
+                    'v_mean': self.v_mean,
+                    'v_std': self.v_std,
+                    'var_mean': self.var_mean,
+                    'var_std': self.var_std,
                 }
 
         torch.save(full_state, filename)
@@ -153,7 +167,10 @@ class Model:
             checkpoint = torch.load(filename)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            
+            self.v_mean = checkpoint['v_mean'] 
+            self.v_std = checkpoint['v_std'] 
+            self.var_mean = checkpoint['var_mean'] 
+            self.var_std = checkpoint['var_std'] 
         else:
             sys.stdout.write('Checkpoint not found, using default model\n')
             sys.stdout.flush()
