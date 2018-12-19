@@ -38,7 +38,8 @@ mkdir -p data/benchmark
 
 for ((x=$curr_cycle; x<200; x++)){
     echo Cycle $x 
-    python train.py --sarsa \
+    python train.py --td \
+        --target_normalization \
         --save_loss \
         --batch_size 32 \
         --epochs 5 \
