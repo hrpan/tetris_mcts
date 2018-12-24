@@ -5,7 +5,6 @@ import sys
 import glob
 import argparse
 import random
-import pandas as pd
 from util.Data import DataLoader, LossSaver
 from math import ceil
 """

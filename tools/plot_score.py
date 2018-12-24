@@ -1,7 +1,6 @@
 import sys
 import os
 import numpy as np
-import pandas as pd
 import argparse
 import glob
 sys.path.append('.')
