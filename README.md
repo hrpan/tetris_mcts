@@ -33,6 +33,7 @@ and modify the `sys.path.append` in `play.py` to include the path of pyTetris.
 The default routine is written in `cycle.sh`, if you are unsure what to do simply use `./cycle.sh` and things should get going.
 
 ## Preliminary results
-In the default procedure (`cycle.sh`), each iteration consists of 100 selfplay games with 300 MCTS simulations to generate the 
+In the default routine (`cycle.sh`), each iteration consists of 100 selfplay games with 300 MCTS simulations to generate the 
 training data and 1 benchmark game with 1500 MCTS simulations to test the performance of the agent.
 
+As can be seen in the lines cleared graph, the agent is still improving even after 13 iterations. However, it takes more than 10 hours to selfplay 100 games on my potato PC so I had to terminate it.
