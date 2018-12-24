@@ -34,8 +34,11 @@ and modify the `sys.path.append` in `play.py` to include the path of pyTetris.
 
 ## How to run it?
 
-* `play.py` is a high level UI for self-play or manual play
-* `train.py` is used for training the neural network
+* `play.py` script for self-play or manual play
+* `train.py` script for training the neural network
+* `tools/plot_score.py` script for plotting the score curve
+* `tools/plot_loss.py` script for plotting the loss curve
+* `tools/replay.py` GUI for replaying
 
 The default routine is written in `cycle.sh`, if you are unsure what to do simply use `./cycle.sh` and things should get going.
 
