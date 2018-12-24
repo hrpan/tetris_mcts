@@ -45,4 +45,6 @@ y = [y for _, y, _ in _sorted]
 y_err = [y_err for _, _, y_err in _sorted]
 """
 plt.errorbar(x, y, y_err)
+plt.xlabel('Iteration')
+plt.ylabel('Lines cleared')
 plt.show()
