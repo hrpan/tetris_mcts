@@ -17,11 +17,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--backend', default='pytorch',help='DL backend')
 parser.add_argument('--data_paths', default=[],nargs='*',help='Data paths')
 parser.add_argument('--inference', default=False, help='Real time inference', action='store_true')
+parser.add_argument('--update_interval', default=10, type=int, help='Update interval (ms)')
 args = parser.parse_args()
 
 backend = args.backend
 data_paths = args.data_paths
 inference = args.inference
+update_interval = args.update_interval
 
 """
 MODEL INIT
@@ -65,7 +67,6 @@ def drawPolicy(policy,canvas,blocksize=30,offset_x=10,offset_y=100):
         canvas.create_rectangle(offset_x+i*blocksize,offset_y,offset_x+(i+1)*blocksize,offset_y+blocksize,fill=color)
 
 index = 0
-update_interval = 5
 
 if __name__ == '__main__':
     master = Tk()
