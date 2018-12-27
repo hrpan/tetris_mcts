@@ -264,19 +264,22 @@ def select_index_3(index,child,node_stats):
 
         _stats = np.zeros((2, len_c), dtype=np.float32)
 
+        _n = 0
+
         for i in range(len_c):
             _idx = _child_nodes[i]
             if node_stats[_idx][0] == 0:
                 index = _idx
                 has_unvisited_node = True
                 break
+            _n += node_stats[_idx][0]
             _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
-            _stats[1][i] = np.sqrt(node_stats[_idx][3] / node_stats[_idx][0])
+            _stats[1][i] = node_stats[_idx][3] / node_stats[_idx][0]
 
         if has_unvisited_node:
             continue
 
-        _c = _stats[1]
+        _c = np.sqrt( _stats[1] * np.log( _n ) )
 
         _q = _stats[0]
 
