@@ -4,7 +4,7 @@ import random
 from numba import jit
 from numba import int32, float32
 
-n_actions = 6
+n_actions = 7
 
 eps = 1e-7
 
@@ -287,7 +287,7 @@ def select_index_3(index,child,node_stats):
 
         index = _child_nodes[_a]
 
-    return trace
+    return np.array(trace, dtype=np.int32)
 
 @jit(nopython=True,cache=True)
 def backup_trace_3(trace,node_stats,value):
