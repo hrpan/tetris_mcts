@@ -3,12 +3,10 @@ from agents.core import select_index, backup_trace, choose_action
 
 from random import randint
 
-n_actions = 6
-
 class Vanilla(Agent):
-    def __init__(self, conf, sims, tau=None, env=None, env_args=None):
+    def __init__(self, conf, sims, tau=None, env=None, env_args=None, n_actions=7):
 
-        super().__init__(sims=sims, backend=None, env=env, env_args=env_args)
+        super().__init__(sims=sims, backend=None, env=env, env_args=env_args, n_actions=n_actions)
 
         self.g_tmp = env(*env_args)
 
@@ -30,12 +28,12 @@ class Vanilla(Agent):
             _g.copy_from(leaf_game)
 
             while not _g.end:
-                _act = randint(0,n_actions-1)
+                _act = randint(0, self.n_actions-1)
                 _g.play(_act)
 
             value = _g.getScore()
 
-            for i in range(n_actions):
+            for i in range(self.n_actions):
                 _g.copy_from(leaf_game)
                 _g.play(i)
                 _n = self.new_node(_g)
