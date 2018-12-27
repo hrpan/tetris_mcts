@@ -2,14 +2,14 @@ import collections
 import numpy as np
 from agents.agent import Agent
 from agents.core import select_index_3, backup_trace_3, choose_action
-n_actions = 6
+
 eps = 1e-7
 
 class ValueSim(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, n_actions=7):
 
-        super().__init__(sims=sims,backend=backend,env=env, env_args=env_args)
+        super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions)
 
         self.g_tmp = env(*env_args)
 
@@ -35,7 +35,7 @@ class ValueSim(Agent):
             value += v
             
             _g = self.g_tmp
-            for i in range(n_actions):
+            for i in range(self.n_actions):
                 _g.copy_from(leaf_game)
                 _g.play(i)
                 _n = self.new_node(_g)
@@ -45,7 +45,7 @@ class ValueSim(Agent):
         backup_trace_3(trace, _node_stats, value)
 
     def compute_stats(self):
-        _stats = np.zeros((6, n_actions), dtype=np.float32)
+        _stats = np.zeros((6, self.n_actions), dtype=np.float32)
 
         _childs = self.arrs['child'][self.root]
         _ns = self.arrs['node_stats']
@@ -53,7 +53,7 @@ class ValueSim(Agent):
         counter = collections.Counter(_childs)        
 
         _stats[2] = 0
-        for i in range(n_actions):
+        for i in range(self.n_actions):
             _idx = _childs[i]
             if counter[_idx] == 0:
                 _stats[0][i] = 0

@@ -3,11 +3,9 @@ import sys
 #sys.path.append('./model')
 from agents.core import get_all_childs
 
-n_actions = 6
-
 class Agent:
 
-    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1)):
+    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7):
 
         self.sims = sims
         
@@ -17,13 +15,15 @@ class Agent:
         self.env = env
         self.env_args = env_args
 
+        self.n_actions = n_actions
+
         self.init_array()
         self.init_model()
 
     def init_array(self):
 
-        child_arr = np.zeros((self.init_nodes, n_actions), dtype = np.int32)
-        child_stats_arr = np.zeros((self.init_nodes, 6, n_actions), dtype = np.float32)
+        child_arr = np.zeros((self.init_nodes, self.n_actions), dtype = np.int32)
+        child_stats_arr = np.zeros((self.init_nodes, 6, self.n_actions), dtype = np.float32)
         node_stats_arr = np.zeros((self.init_nodes, 5), dtype = np.float32)
         self.arrs = {
                 'child':child_arr,
@@ -129,19 +129,19 @@ class Agent:
         self.stats = self.compute_stats()
 
         if np.all(self.stats[3] == 0):
-            action = np.random.choice(n_actions)
+            action = np.random.choice(self.n_actions)
         else:
             action = np.argmax(self.stats[3])
 
         return action
 
     def compute_stats(self):
-        _stats = np.zeros((6,n_actions))
+        _stats = np.zeros((6,self.n_actions))
 
         _childs = self.arrs['child'][self.root]
         _ns = self.arrs['node_stats']
 
-        for i in range(n_actions):
+        for i in range(self.n_actions):
             _idx = _childs[i]
             _stats[0][i] = _ns[_idx][0]
             _stats[1][i] = _ns[_idx][1]

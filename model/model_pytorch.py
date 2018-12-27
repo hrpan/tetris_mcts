@@ -11,6 +11,8 @@ IMG_H, IMG_W, IMG_C = (22,10,1)
 
 EXP_PATH = './pytorch_model/'
 
+n_actions = 7
+
 def convOutShape(shape_in,kernel_size,stride):
     return ((shape_in[0] - kernel_size) // stride + 1, (shape_in[1] - kernel_size) // stride + 1 )
 
@@ -36,7 +38,7 @@ class Net(torch.jit.ScriptModule):
         
         flat_out = n_fc1
  
-        self.fc_p = nn.Linear(flat_out, 6)
+        self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
 
