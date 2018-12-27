@@ -12,9 +12,11 @@ from importlib import import_module
 class ScoreTracker:
     def __init__(self):
         self.scores = []
+        self.lines = []
 
-    def append(self, score):
+    def append(self, score, line):
         self.scores.append(score)
+        self.lines.append(line)
 
     def getStats(self):
         _min = np.amin(self.scores)
@@ -24,12 +26,16 @@ class ScoreTracker:
         return _min, _max, _mean, _std
 
     def printStats(self):
-        sys.stdout.write('\rGames played:%3d    min/max/mean/std:%5.2f/%5.2f/%5.2f/%5.2f'
+        sys.stdout.write('\rGames played:%3d    min/max/mean/std:%5.2f(%5.2f)/%5.2f(%5.2f)/%5.2f(%5.2f)/%5.2f(%5.2f)'
             %(len(self.scores),
             np.amin(self.scores),
+            np.amin(self.lines),
             np.amax(self.scores),
+            np.amax(self.lines),
             np.mean(self.scores),
-            np.std(self.scores)))
+            np.mean(self.lines),
+            np.std(self.scores),
+            np.std(self.lines)))
         sys.stdout.flush()
 
     def reset(self):
@@ -79,7 +85,7 @@ game = Tetris(*env_args)
 if selfplay:
     _agent_module = import_module('agents.'+agent_type)
     Agent = getattr(_agent_module,agent_type)
-    agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args)
+    agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args, n_actions = 7)
     agent.set_root(game)
 
 if save:
@@ -123,7 +129,7 @@ while True:
 
             if save:
                 saver.save_episode()
-            tracker.append(game.getScore())
+            tracker.append(game.getScore(), game.getLines())
             tracker.printStats()
 
             if ngames == 0:

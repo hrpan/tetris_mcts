@@ -1,6 +1,8 @@
 import tables
 import numpy as np
 
+n_actions = 7
+
 def keyFile(s):
     for i, c in enumerate(s):
         if c.isdigit() and s[i-4:i] == 'data':
@@ -10,10 +12,12 @@ def keyFile(s):
 class State(tables.IsDescription):
     episode        = tables.Int32Col()
     board          = tables.Int8Col(shape=(22, 10))
-    policy         = tables.Float32Col(shape=(6,))
+    policy         = tables.Float32Col(shape=(n_actions,))
     action         = tables.Int8Col()
+    combo          = tables.Int32Col()
+    lines          = tables.Int32Col()
     score          = tables.Int32Col()
-    child_stats    = tables.Float32Col(shape=(6, 6))
+    child_stats    = tables.Float32Col(shape=(6, n_actions))
     cycle          = tables.Int32Col() 
     value          = tables.Float32Col()
     variance       = tables.Float32Col()
@@ -52,6 +56,8 @@ class DataSaver:
         self.state['board'] = game.getState()
         self.state['policy'] = agent.get_prob()
         self.state['action'] = action
+        self.state['combo'] = game.getCombo()
+        self.state['lines'] = game.getLines()
         self.state['score'] = game.getScore()
         self.state['child_stats'] = agent.get_stats()         
         self.state['cycle'] = self.cycle
