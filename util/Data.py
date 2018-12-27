@@ -91,6 +91,8 @@ class DataLoader:
         self.policy = np.concatenate([t.col('policy') for t in self.tables])
         self.action = np.concatenate([t.col('action') for t in self.tables])
         self.score = np.concatenate([t.col('score') for t in self.tables])
+        self.lines = np.concatenate([t.col('lines') for t in self.tables])
+        self.combo = np.concatenate([t.col('combo') for t in self.tables])
         self.child_stats = np.concatenate([t.col('child_stats') for t in self.tables])
         self.cycle = np.concatenate([t.col('cycle') for t in self.tables])
         self.value = np.concatenate([t.col('value') for t in self.tables])
@@ -124,6 +126,15 @@ class DataLoader:
     def getScore(self, index):
         index = self.bound_index(index)
         return self.score[index]
+
+    def getLines(self, index):
+        index = self.bound_index(index)
+        return self.lines[index]
+
+    def getCombo(self, index):
+        index = self.bound_index(index)
+        return self.combo[index]
+
 
 class LossSaver:
 
