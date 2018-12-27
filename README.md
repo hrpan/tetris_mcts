@@ -48,7 +48,7 @@ The default routine is written in `cycle.sh`, if you are unsure what to do simpl
 In the default routine (`cycle.sh`), each iteration consists of 100 games of selfplay with 300 MCTS simulations per move to generate the 
 training data and 1 benchmark game with 1500 MCTS simulations per move to test the performance of the agent.
 
-<img src="./score.png" width=400> <img src="./benchmark.png" width=400>
+<img src="./results/score.png" width=400> <img src="./results/benchmark.png" width=400>
 
 Left one is the normal (300 simulations) selfplay, right one is the benchmark (1500 simulations) selfplay. As a baseline, vanilla MCTS agent (no neural network) has an average score about 7 lines with 300 simulations per move.
 
