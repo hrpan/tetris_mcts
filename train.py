@@ -98,8 +98,9 @@ else:
                 ep_score = loader.score[idx_end]
                 break
         for _i in range(idx, idx_end+1):
-            values[_i] = ep_score - self.score[_i]
+            values[_i] = ep_score - loader.score[_i]
         idx = idx_end
+    variance = loader.variance 
 
 if backend == 'pytorch':
     states = np.expand_dims(loader.board, 1).astype(np.float32)
