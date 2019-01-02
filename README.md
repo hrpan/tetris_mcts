@@ -18,7 +18,7 @@ I believed that a model based approach should improve significantly compared to 
 At the core of AlphaGo, the agent tries to search the game tree base on upper confidence bound applied to trees (UCT). Unlike vanilla MCTS which has to simulate the entire game to estimate the value of current state, AlphaGo uses a neural network to inference the value (winning probability) and the policy (likely next moves) of the current state to calculate the upper confidence bound for each moves. In my agent I used exponential moving averages and variances with initial values from the neural network to calculate the upper confidence bound based on central limit theorem which I believe is more appropriate for single player games with unbounded rewards. Another difference is that AlphaGo uses the final scores of each game as the training targets while this agent uses a bootstrapped target, hence Temporal Difference Learning.
 
 ## How is this different from other Tetris Bots?
-Most of the super-human performing Tetris bots seen on youtube or other games use heuristics (number of holes, height of each column, smoothness of the surface stc.) to model the reward. Using heuristics can substantially simplify the problem since the rewards are now much denser (you get a reward for each piece you drop) and are highly correlated with the final score. However, such handcrafted rewards can bias your agents toward the target you set (minimize holes in the board or height of the column) instead of the true target (clearing lines). Furthermore, such heuristics do not generalize beyond the game Tetris meaning that you have to handcraft rewards for each game you want your bot to play. This agent differs from those bots in the sense that it can be applied to any environment satisfying certain requirements.
+Most of the super-human performing Tetris bots seen on youtube or other games use heuristics (number of holes, height of each column, smoothness of the surface etc.) to model the reward. Using heuristics can substantially simplify the problem since the rewards are now much denser (you get a reward for each piece you drop) and are highly correlated with the final score. However, such handcrafted rewards can bias your agents toward the target you set (minimize holes in the board or height of the column) instead of the true target (clearing lines). Furthermore, such heuristics do not generalize beyond the game Tetris meaning that you have to handcraft rewards for each game you want your bot to play. This agent differs from those bots in the sense that it can be applied to any environment satisfying certain requirements.
 
 ## Prerequisite
 
@@ -34,7 +34,7 @@ and modify the `sys.path.append` in `play.py` to include the path of pyTetris.
 
 ## How to run it?
 
-* `play.py` script for self-play or manual play
+* `play.py` script for agent play or manual play
 * `train.py` script for training the neural network
 * `tools/plot_score.py` script for plotting the score curve
 * `tools/plot_loss.py` script for plotting the loss curve
@@ -45,12 +45,12 @@ The default routine is written in `cycle.sh`, if you are unsure what to do simpl
 
 
 ## Results
-In the default routine (`cycle.sh`), each iteration consists of 100 games of selfplay with 300 MCTS simulations per move to generate the 
+In the default routine (`cycle.sh`), each iteration consists of 100 games with 300 MCTS simulations per move to generate the 
 training data and 1 benchmark game with 1500 MCTS simulations per move to test the performance of the agent.
 
 <img src="./results/score.png" width=400> <img src="./results/benchmark.png" width=400>
 
-Left one is the normal (300 simulations) selfplay, right one is the benchmark (1500 simulations) selfplay. As a baseline, vanilla MCTS agent (no neural network) has an average score about 7 lines with 300 simulations per move.
+Left one is the normal (300 simulations) play, right one is the benchmark (1500 simulations) play. As a baseline, vanilla MCTS agent (no neural network) has an average score about 7 lines with 300 simulations per move.
 
 As can be seen in the graphs, the agent is still improving even after 13 iterations (1300 games), however, it takes more than 10 hours to finish one iteration on my potato so I had to terminate it early. To the best of my knowledge, this result beats all non-heuristic agents.
 
