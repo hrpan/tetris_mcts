@@ -52,6 +52,8 @@ class ValueSim(Agent):
 
         counter = collections.Counter(_childs)        
 
+        root_score = _ns[self.root][2]        
+
         _stats[2] = 0
         for i in range(self.n_actions):
             _idx = _childs[i]
@@ -60,8 +62,8 @@ class ValueSim(Agent):
                 _stats[1][i] = 0
             else:
                 _stats[0][i] = _ns[_idx][0] / counter[_idx]
-                _stats[1][i] = _ns[_idx][1] * _ns[_idx][0]
-            _stats[3][i] = _ns[_idx][1]
+                _stats[1][i] = ( _ns[_idx][1] + _ns[_idx][2] - root_score ) * _ns[_idx][0]
+            _stats[3][i] = _ns[_idx][1] + _ns[_idx][2] - root_score
             _stats[4][i] = _ns[_idx][3]
             _stats[5][i] = _ns[_idx][4]
 
