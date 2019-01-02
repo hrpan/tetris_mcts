@@ -20,8 +20,10 @@ for path in data_paths:
 list_of_data = sorted(list_of_data, key=keyFile)
 
 x = []
-y = []
-y_err = []
+y_s = []
+y_s_err = []
+y_l = []
+y_l_err = []
 
 for f in list_of_data:
     print('Processing: ', f)
@@ -30,21 +32,30 @@ for f in list_of_data:
     except:
         pass
     _idx = np.ediff1d(_tmp.episode, to_end=-1) == -1
-    _scores = _tmp.score[_idx]
     _cycle = _tmp.cycle[0]
-    _mean = _scores.mean()
-    _stddev = _scores.std() / np.sqrt(np.sum(np.absolute(_idx)))
+    _scores = _tmp.score[_idx]
+    s_mean = _scores.mean()
+    s_stddev = _scores.std() / np.sqrt(np.sum(np.absolute(_idx)))
+    _lines = _tmp.lines[_idx]
+    l_mean = _lines.mean()
+    l_stddev = _lines.std() / np.sqrt(np.sum(np.absolute(_idx)))
 
     x.append(_cycle)
-    y.append(_mean)
-    y_err.append(_stddev)
-"""
-_sorted = sorted(zip(x,y ,y_err))
-x = [x for x, _, _ in _sorted]
-y = [y for _, y, _ in _sorted]
-y_err = [y_err for _, _, y_err in _sorted]
-"""
-plt.errorbar(x, y, y_err)
+    y_s.append(s_mean)
+    y_s_err.append(s_stddev)
+    y_l.append(l_mean)
+    y_l_err.append(l_stddev)
+
+c1 = 'tab:red'
+plt.errorbar(x, y_s, y_s_err, color=c1)
 plt.xlabel('Iteration')
-plt.ylabel('Lines cleared')
+plt.ylabel('Score')
+plt.gca().tick_params(axis='y', labelcolor=c1)
+
+c2 = 'tab:blue'
+ax2 = plt.gca().twinx()
+ax2.errorbar(x, y_l, y_l_err, color=c2)
+ax2.set_ylabel('Lines cleared')
+ax2.tick_params(axis='y', labelcolor=c2)
+
 plt.show()
