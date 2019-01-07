@@ -82,8 +82,9 @@ class Model:
         _v, _var, _p = self.model(state)
 
         loss_v = F.mse_loss(_v, value)
-        loss_var = F.mse_loss(_var, variance)
         #loss_v = Variable(torch.FloatTensor([0]))
+        #loss_var = F.mse_loss(_var, variance)
+        loss_var = Variable(torch.FloatTensor([0]))
         #loss_p = F.kl_div(torch.log(_p),policy)
         loss_p = Variable(torch.FloatTensor([0]))
 

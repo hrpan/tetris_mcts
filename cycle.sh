@@ -7,7 +7,7 @@ ngames=100
 n_sims=300
 n_sims_bench=1500
 curr_cycle=1
-agent_type=ValueSim
+agent_type=ValueSimBayes
 
 while getopts ":cr" opt;do
     case $opt in
