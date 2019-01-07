@@ -1,6 +1,8 @@
 import numpy as np
 import random
 
+from agents.special import std_quantile2
+
 from numba import jit
 from numba import int32, float32
 
@@ -255,6 +257,8 @@ def select_index_3(index,child,node_stats):
             if child[index][i] != 0:
                 _child_nodes.append(child[index][i])
 
+        _child_nodes = list(set(_child_nodes))
+
         len_c = len(_child_nodes)
 
         if len_c == 0:
@@ -304,4 +308,63 @@ def backup_trace_3(trace,node_stats,value):
             node_stats[idx][3] = (1-alpha) * (node_stats[idx][3] + alpha * _v * _v)
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v,node_stats[idx][4])
+
+@jit(nopython=True,cache=True)
+def select_index_bayes(index,child,node_stats):
+    """
+    based on bayes UCB
+    http://proceedings.mlr.press/v22/kaufmann12/kaufmann12.pdf
+    """
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        _child_nodes = []
+        for i in range(n_actions):
+            if child[index][i] != 0:
+                _child_nodes.append(child[index][i])
+
+        _child_nodes = list(set(_child_nodes))
+
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
+            break
+
+        has_low_node = False
+
+        _stats = np.zeros((3, len_c), dtype=np.float32)
+
+        _n = 0
+
+        for i in range(len_c):
+            _idx = _child_nodes[i]
+            if node_stats[_idx][0] < 2:
+                index = _idx
+                has_low_node = True
+                break
+            _n += node_stats[_idx][0]
+
+            _stats[0][i] = node_stats[_idx][0]
+            _stats[1][i] = node_stats[_idx][1] / node_stats[_idx][0] + node_stats[_idx][2] - node_stats[index][2]
+            _stats[2][i] = ( node_stats[_idx][3] - pow(node_stats[_idx][1], 2) / node_stats[_idx][0] ) / ( node_stats[_idx][0] - 1 )
+
+        if has_low_node:
+            continue
+
+        quantiles = std_quantile2(_stats[0] - 1, _n)
+        
+        _c = np.sqrt( _stats[2] ) * quantiles
+
+        _q = _stats[1]
+
+        _v = _q + _c 
+
+        _a = np.argmax(_v)
+
+        index = _child_nodes[_a]
+
+    return np.array(trace, dtype=np.int32)
 
