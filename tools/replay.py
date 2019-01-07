@@ -32,21 +32,22 @@ update_interval = args.update_interval
 MODEL INIT
 """
 sys.path.append('./model')
-if backend == 'tensorflow':
+if inference:
+    if backend == 'tensorflow':
 
-    import tensorflow as tf
-    from model import Model
+        import tensorflow as tf
+        from model import Model
 
-    sess = tf.Session()
-    m = Model()
-    m.load(sess)
+        sess = tf.Session()
+        m = Model()
+        m.load(sess)
 
-elif backend == 'pytorch':
+    elif backend == 'pytorch':
 
-    from model_pytorch import Model
+        from model_pytorch import Model
 
-    m = Model()
-    m.load()
+        m = Model()
+        m.load()
 
 
 def drawBoard(board, canvas):
