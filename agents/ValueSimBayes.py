@@ -30,8 +30,6 @@ class ValueSimBayes(Agent):
 
             v, var, p = self.evaluate_state(leaf_game.getState())
 
-            _node_stats[leaf_index][3] = var
-
             value += v
             
             _g = self.g_tmp
