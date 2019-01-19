@@ -356,7 +356,7 @@ def select_index_bayes(index,child,node_stats):
 
         quantiles = std_quantile2(_stats[0] - 1, _n)
         
-        _c = np.sqrt( _stats[2] ) * quantiles
+        _c = np.sqrt( _stats[2] / _stats[0] ) * quantiles
 
         _q = _stats[1]
 
