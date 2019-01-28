@@ -127,8 +127,6 @@ while True:
         else:
             ngames -= 1
 
-            if save:
-                saver.save_episode()
             tracker.append(game.getScore(), game.getLines())
             tracker.printStats()
 

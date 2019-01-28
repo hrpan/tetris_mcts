@@ -35,14 +35,18 @@ class Loss(tables.IsDescription):
 
 class DataSaver:
 
-    def __init__(self, save_dir, save_file, cycle):
+    def __init__(self, save_dir, save_file, cycle, chunksize=500):
 
         file_name = save_dir + save_file + str(cycle) 
 
-        self.cycle = cycle
-
-        self.file = tables.open_file(file_name, mode='a')
+        self.chunksize = chunksize
         
+        self.cycle = cycle
+        
+        self.file = tables.open_file(file_name, mode='a')
+    
+        self.iter = 0
+
         if self.file.__contains__('/State'):
             self.table = self.file.root.State
         else:
@@ -52,6 +56,7 @@ class DataSaver:
 
     def add(self, episode, action, agent, game):
         
+        self.iter += 1 
         self.state['episode'] = episode
         self.state['board'] = game.getState()
         self.state['policy'] = agent.get_prob()
@@ -67,7 +72,14 @@ class DataSaver:
 
         self.state.append()
 
+        self.iter = self.iter % self.chunksize
+
+        if self.iter == 0:
+            self.table.flush()
+
     def close(self):
+        
+        self.table.flush()
     
         self.file.close()
 
@@ -82,7 +94,7 @@ class DataLoader:
 
         list_of_files = sorted(list_of_files, key=keyFile)
  
-        self.files = [ tables.open_file(f, mode='r') for f in list_of_files]
+        self.files = [tables.open_file(f, mode='r') for f in list_of_files]
 
         self.tables = [f.root.State for f in self.files]
     
