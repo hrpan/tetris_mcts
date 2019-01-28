@@ -35,6 +35,7 @@ class Net(torch.jit.ScriptModule):
 
         n_fc1 = 128
         self.fc1 = nn.Linear(flat_in, n_fc1)
+        self.bn3 = nn.BatchNorm1d(n_fc1)
         
         flat_out = n_fc1
  
@@ -47,9 +48,9 @@ class Net(torch.jit.ScriptModule):
     def forward(self, x):
         x = self.bn1(F.relu(self.conv1(x)))
         x = self.bn2(F.relu(self.conv2(x)))
-        x = x.view(-1, 3456)
+        x = x.view(x.shape[0], -1)
 
-        x = F.relu(self.fc1(x))        
+        x = self.bn3(F.relu(self.fc1(x)))
 
         policy = F.softmax(self.fc_p(x), dim=1)
         value = self.fc_v(x)
