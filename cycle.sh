@@ -2,12 +2,18 @@
 
 trap 'pkill -P $$' EXIT
 
-n_worker=1
-ngames=100
-n_sims=300
-n_sims_bench=1500
 curr_cycle=1
+
+#TRAIN ARGS
+last_nfiles=1
+n_worker=1
+val_eps=5
+
+#PLAY ARGS
+ngames=250
 agent_type=ValueSimBayes
+n_sims=300
+n_sims_bench=1000
 
 while getopts ":cr" opt;do
     case $opt in
@@ -42,10 +48,10 @@ for ((x=$curr_cycle; x<200; x++)){
         --target_normalization \
         --save_loss \
         --batch_size 32 \
-        --epochs 5 \
+        --epochs 10 \
         --data_paths $DATA_PATHS \
-        --val_episodes 5 \
-        --last_nfiles $n_worker \
+        --val_episodes $val_eps \
+        --last_nfiles $last_nfiles \
         --val_total 100 \
         --save_interval 250 >> logs/log_train 2>> logs/log_err
 
