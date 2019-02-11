@@ -162,10 +162,11 @@ if backend == 'pytorch':
     train_step = lambda batch, step: m.train(batch)
     compute_loss = lambda batch: m.compute_loss(batch)
     scheduler_step = lambda val_loss: m.update_scheduler(val_loss)
-    m.v_mean = v_mean
-    m.v_std = v_std
-    m.var_mean = var_mean
-    m.var_std = var_std
+    if target_normalization:
+        m.v_mean = v_mean
+        m.v_std = v_std
+        m.var_mean = var_mean
+        m.var_std = var_std
 elif backend == 'tensorflow':
     from model.model import Model
     import tensorflow as tf
