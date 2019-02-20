@@ -310,7 +310,7 @@ def backup_trace_3(trace,node_stats,value):
         node_stats[idx][4] = max(v,node_stats[idx][4])
 
 @jit(nopython=True,cache=True)
-def select_index_bayes(index,child,node_stats):
+def select_index_bayes(index, child, node_stats, min_n=10):
     """
     based on bayes UCB
     http://proceedings.mlr.press/v22/kaufmann12/kaufmann12.pdf
@@ -335,23 +335,28 @@ def select_index_bayes(index,child,node_stats):
 
         has_low_node = False
 
+        low_nodes = []
+
         _stats = np.zeros((3, len_c), dtype=np.float32)
 
         _n = 0
 
         for i in range(len_c):
             _idx = _child_nodes[i]
-            if node_stats[_idx][0] < 2:
-                index = _idx
+            if node_stats[_idx][0] < min_n:
+                low_nodes.append(_idx)
                 has_low_node = True
-                break
+
+            if has_low_node: continue
+
             _n += node_stats[_idx][0]
 
             _stats[0][i] = node_stats[_idx][0]
             _stats[1][i] = node_stats[_idx][1] / node_stats[_idx][0] + node_stats[_idx][2] - node_stats[index][2]
             _stats[2][i] = ( node_stats[_idx][3] - pow(node_stats[_idx][1], 2) / node_stats[_idx][0] ) / ( node_stats[_idx][0] - 1 )
 
-        if has_low_node:
+        if low_nodes:
+            index = np.random.choice(np.array(low_nodes))
             continue
 
         quantiles = std_quantile2(_stats[0] - 1, _n)
