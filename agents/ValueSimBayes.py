@@ -71,7 +71,7 @@ class ValueSimBayes(Agent):
 
         _ns = self.arrs['node_stats'][self.root]
 
-        return _ns[1] / _ns[0], _ns[3] 
+        return _ns[1] / _ns[0], (_ns[3] - (_ns[1] * _ns[1] / _ns[0])) / _ns[0] 
 
     def update_root(self, game):
         
