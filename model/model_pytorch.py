@@ -35,9 +35,8 @@ class Net(torch.jit.ScriptModule):
 
         n_fc1 = 128
         self.fc1 = nn.Linear(flat_in, n_fc1)
-        self.bn3 = nn.BatchNorm1d(n_fc1)
-        
         flat_out = n_fc1
+        #flat_out = flat_in
  
         self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
@@ -46,12 +45,14 @@ class Net(torch.jit.ScriptModule):
 
     @torch.jit.script_method
     def forward(self, x):
-        x = self.bn1(F.relu(self.conv1(x)))
-        x = self.bn2(F.relu(self.conv2(x)))
+        #x = self.bn1(F.relu(self.conv1(x)))
+        x = F.relu(self.conv1(x))
+        #x = self.bn2(F.relu(self.conv2(x)))
+        x = F.relu(self.conv2(x))
         x = x.view(x.shape[0], -1)
-
-        x = self.bn3(F.relu(self.fc1(x)))
-
+    
+        x = F.relu(self.fc1(x))
+        
         policy = F.softmax(self.fc_p(x), dim=1)
         value = self.fc_v(x)
         var = self.fc_var(x)
@@ -64,7 +65,7 @@ class Model:
     def __init__(self,new=True):
 
         self.model = Net()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
         self.scheduler = None
 
         self.v_mean = 0
@@ -73,16 +74,19 @@ class Model:
         self.var_mean = 3
         self.var_std = 1
 
-    def _loss(self,batch):
+    def _loss(self,batch,weighted_mse=False):
 
         state = convert(batch[0])
         value = convert(batch[1])
         variance = convert(batch[2])
         policy = convert(batch[3])
-
+        
         _v, _var, _p = self.model(state)
-
-        loss_v = F.mse_loss(_v, value)
+        if weighted_mse:
+            weight = convert(batch[4])
+            loss_v = (weight * (_v - value) ** 2).mean()
+        else:
+            loss_v = F.mse_loss(_v, value)
         #loss_v = Variable(torch.FloatTensor([0]))
         #loss_var = F.mse_loss(_var, variance)
         loss_var = Variable(torch.FloatTensor([0]))
@@ -92,23 +96,23 @@ class Model:
         loss = loss_v + loss_var + loss_p
         return loss, loss_v, loss_var, loss_p
 
-    def compute_loss(self,batch):
+    def compute_loss(self,batch,weighted_mse=False):
 
         self.model.eval()
 
-        losses = self._loss(batch)
+        losses = self._loss(batch, weighted_mse)
         
         result = [l.data.numpy() for l in losses]
 
         return result
 
-    def train(self,batch):
+    def train(self,batch,weighted_mse=False):
 
         self.model.train()
 
         self.optimizer.zero_grad()
 
-        losses = self._loss(batch)
+        losses = self._loss(batch, weighted_mse)
 
         losses[0].backward()
 

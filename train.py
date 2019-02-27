@@ -7,6 +7,9 @@ import argparse
 import random
 from util.Data import DataLoader, LossSaver
 from math import ceil
+
+eps = 1e-4
+
 """
 ARGS
 """
@@ -28,6 +31,7 @@ parser.add_argument('--save_interval', default=100, type=int, help='Number of it
 parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
 parser.add_argument('--target_normalization', default=False, help='Standardizes the targets', action='store_true')
 parser.add_argument('--td', default=False, help='Temporal difference update', action='store_true')
+parser.add_argument('--weighted_mse', default=False, help='Use weighted (by (var/n)^-1 )', action='store_true')
 args = parser.parse_args()
 
 backend = args.backend
@@ -47,6 +51,7 @@ save_interval = args.save_interval
 shuffle = args.shuffle
 target_normalization = args.target_normalization
 td = args.td
+weighted_mse = args.weighted_mse
 
 #========================
 """ 
@@ -86,9 +91,14 @@ if td:
                 idx_r += 1
                 weight *= eligibility_trace_lambda
             values[idx] = _sum / _weight_sum
+        weights = np.ones(values.shape)
     else:
         values = loader.value
         variance = loader.variance
+        if weighted_mse:
+            weights = np.sum(loader.child_stats[:,0], axis=1) / (variance + eps)
+        else:
+            weights = np.ones(values.shape)
 else:
     values = np.zeros((len(loader.score), ), dtype=np.float32)
     while idx < len(loader.episode):
@@ -101,11 +111,13 @@ else:
             values[_i] = ep_score - loader.score[_i]
         idx = idx_end
     variance = loader.variance 
+    weights = np.ones(values.shape)
 
 if backend == 'pytorch':
     states = np.expand_dims(loader.board, 1).astype(np.float32)
     policy = loader.policy.astype(np.float32)
     values = np.expand_dims(values, -1).astype(np.float32)
+    weights = np.expand_dims(weights, -1).astype(np.float32)
 elif backend == 'tensorflow':
     states = np.expand_dims(np.stack(loader['board'].values),-1)
     policy = loader.policy
@@ -122,6 +134,7 @@ if shuffle:
     policy = policy[indices]
     values = values[indices]
     variance = variance[indices]
+    weights = weights[indices]
 #=========================
 """
 VALIDATION SET
@@ -131,9 +144,9 @@ t_idx = np.where(loader.episode >= val_episodes + 1)
 
 n_data = len(t_idx[0])
 
-batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx]]
+batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
 
-batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx]]
+batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx], weights[t_idx]]
 
 #=========================
 """
@@ -159,8 +172,8 @@ if backend == 'pytorch':
     m = Model()
     if not new:
         m.load()
-    train_step = lambda batch, step: m.train(batch)
-    compute_loss = lambda batch: m.compute_loss(batch)
+    train_step = lambda batch, step: m.train(batch, weighted_mse=weighted_mse)
+    compute_loss = lambda batch: m.compute_loss(batch, weighted_mse=weighted_mse)
     scheduler_step = lambda val_loss: m.update_scheduler(val_loss)
     if target_normalization:
         m.v_mean = v_mean
