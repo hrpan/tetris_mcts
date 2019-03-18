@@ -33,7 +33,7 @@ class Net(torch.jit.ScriptModule):
        
         flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc1 = 128
+        n_fc1 = 64
         self.fc1 = nn.Linear(flat_in, n_fc1)
         flat_out = n_fc1
         #flat_out = flat_in
@@ -45,10 +45,10 @@ class Net(torch.jit.ScriptModule):
 
     @torch.jit.script_method
     def forward(self, x):
-        #x = self.bn1(F.relu(self.conv1(x)))
-        x = F.relu(self.conv1(x))
-        #x = self.bn2(F.relu(self.conv2(x)))
-        x = F.relu(self.conv2(x))
+        x = self.bn1(F.relu(self.conv1(x)))
+        #x = F.relu(self.conv1(x))
+        x = self.bn2(F.relu(self.conv2(x)))
+        #x = F.relu(self.conv2(x))
         x = x.view(x.shape[0], -1)
     
         x = F.relu(self.fc1(x))
@@ -62,7 +62,7 @@ def convert(x):
     return torch.from_numpy(x.astype(np.float32))
 
 class Model:
-    def __init__(self,new=True):
+    def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1):
 
         self.model = Net()
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
@@ -74,7 +74,14 @@ class Model:
         self.var_mean = 3
         self.var_std = 1
 
-    def _loss(self,batch,weighted_mse=False):
+        self.weighted_mse = weighted_mse
+
+        self.ewc = ewc
+        self.ewc_lambda = ewc_lambda
+
+        self.fisher = None
+
+    def _loss(self, batch):
 
         state = convert(batch[0])
         value = convert(batch[1])
@@ -82,46 +89,89 @@ class Model:
         policy = convert(batch[3])
         
         _v, _var, _p = self.model(state)
-        if weighted_mse:
+        if self.weighted_mse:
             weight = convert(batch[4])
             loss_v = (weight * (_v - value) ** 2).mean()
         else:
             loss_v = F.mse_loss(_v, value)
         #loss_v = Variable(torch.FloatTensor([0]))
-        #loss_var = F.mse_loss(_var, variance)
-        loss_var = Variable(torch.FloatTensor([0]))
+        loss_var = F.mse_loss(_var, variance)
+        #loss_var = Variable(torch.FloatTensor([0]))
         #loss_p = F.kl_div(torch.log(_p),policy)
         loss_p = Variable(torch.FloatTensor([0]))
 
         loss = loss_v + loss_var + loss_p
         return loss, loss_v, loss_var, loss_p
 
-    def compute_loss(self,batch,weighted_mse=False):
+    def compute_ewc_loss(self):
+
+        if self.fisher:
+            ewc_loss = torch.tensor([0.], dtype=torch.float32, requires_grad=True)
+            for i, p in enumerate(self.model.parameters()):
+                ewc_loss = ewc_loss + self.ewc_lambda * torch.sum(self.fisher[i] * (p - self.p0[i]) ** 2)
+            return ewc_loss
+        else:
+            return torch.tensor([0.], dtype=torch.float32, requires_grad=True)
+
+    def compute_loss(self, batch):
 
         self.model.eval()
 
-        losses = self._loss(batch, weighted_mse)
+        losses = self._loss(batch)
         
         result = [l.data.numpy() for l in losses]
 
+        if self.ewc:
+            result.append(self.compute_ewc_loss().data.numpy())
+        else:
+            result.append(0)
+
         return result
 
-    def train(self,batch,weighted_mse=False):
+    def train(self, batch):
 
         self.model.train()
 
         self.optimizer.zero_grad()
 
-        losses = self._loss(batch, weighted_mse)
+        losses = self._loss(batch)
 
-        losses[0].backward()
+        if self.ewc:
+            ewc_loss = self.compute_ewc_loss()
+            l = losses[0] + ewc_loss
+        else:
+            l = losses[0]
+
+        l.backward()
 
         self.optimizer.step()
 
         result = [l.data.numpy() for l in losses]
 
-        return result
+        if self.ewc:
+            result.append(self.compute_ewc_loss().data.numpy())
+        else:
+            result.append(0)
 
+        return result
+    
+    def compute_fisher(self, batch):
+        
+        self.model.train()
+        
+        fisher = [torch.zeros(p.data.shape) for p in self.model.parameters()]
+
+        self.optimizer.zero_grad()
+
+        losses = self._loss(batch)
+
+        losses[0].backward()
+        for i, p in enumerate(self.model.parameters()):
+            if p.grad is not None:
+                fisher[i] = torch.pow(p.grad.data, 2) / len(batch[0])
+        
+        self.fisher = fisher
+    
     def inference(self,batch):
 
         self.model.eval()
@@ -161,8 +211,8 @@ class Model:
                     'v_std': self.v_std,
                     'var_mean': self.var_mean,
                     'var_std': self.var_std,
+                    'fisher': self.fisher,
                 }
-
         torch.save(full_state, filename)
 
     def load(self):
@@ -178,7 +228,10 @@ class Model:
             self.v_mean = checkpoint['v_mean'] 
             self.v_std = checkpoint['v_std'] 
             self.var_mean = checkpoint['var_mean'] 
-            self.var_std = checkpoint['var_std'] 
+            self.var_std = checkpoint['var_std']
+            self.fisher = checkpoint['fisher'] 
+            if self.ewc:
+                self.p0 = [p.clone() for p in self.model.parameters()]
         else:
             sys.stdout.write('Checkpoint not found, using default model\n')
             sys.stdout.flush()

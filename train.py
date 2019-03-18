@@ -8,7 +8,7 @@ import random
 from util.Data import DataLoader, LossSaver
 from math import ceil
 
-eps = 1e-4
+eps = 1e-3
 
 """
 ARGS
@@ -21,6 +21,8 @@ parser.add_argument('--data_paths', default=[], nargs='*', help='Training data p
 parser.add_argument('--eligibility_trace', default=False, action='store_true', help='Use eligibility trace')
 parser.add_argument('--eligibility_trace_lambda', default=0.9, type=float, help='Lambda in eligibility trace (default:0.9)')
 parser.add_argument('--epochs', default=10, type=int, help='Training epochs (default:10)')
+parser.add_argument('--ewc', default=False, help='Elastic weight consolidation (default:False)', action='store_true')
+parser.add_argument('--ewc_lambda', default=1, type=float, help='Elastic weight consolidation importance parameter(default:1)')
 parser.add_argument('--last_nfiles', default=1, type=int, help='Use last n files in training only (default:1, -1 for all)')
 parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
@@ -31,7 +33,7 @@ parser.add_argument('--save_interval', default=100, type=int, help='Number of it
 parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
 parser.add_argument('--target_normalization', default=False, help='Standardizes the targets', action='store_true')
 parser.add_argument('--td', default=False, help='Temporal difference update', action='store_true')
-parser.add_argument('--weighted_mse', default=False, help='Use weighted (by (var/n)^-1 )', action='store_true')
+parser.add_argument('--weighted_mse', default=False, help='Use weighted (by (var)^-1 ) least square', action='store_true')
 args = parser.parse_args()
 
 backend = args.backend
@@ -41,6 +43,8 @@ data_paths = args.data_paths
 eligibility_trace = args.eligibility_trace
 eligibility_trace_lambda = args.eligibility_trace_lambda
 epochs = args.epochs
+ewc = args.ewc
+ewc_lambda = args.ewc_lambda
 last_nfiles = args.last_nfiles
 max_iters = args.max_iters
 new = args.new
@@ -96,7 +100,7 @@ if td:
         values = loader.value
         variance = loader.variance
         if weighted_mse:
-            weights = np.sum(loader.child_stats[:,0], axis=1) / (variance + eps)
+            weights = 1 / (variance + eps)
         else:
             weights = np.ones(values.shape)
 else:
@@ -169,11 +173,11 @@ MODEL SETUP
 
 if backend == 'pytorch':
     from model.model_pytorch import Model
-    m = Model()
+    m = Model(weighted_mse=weighted_mse, ewc=ewc, ewc_lambda=ewc_lambda)
     if not new:
         m.load()
-    train_step = lambda batch, step: m.train(batch, weighted_mse=weighted_mse)
-    compute_loss = lambda batch: m.compute_loss(batch, weighted_mse=weighted_mse)
+    train_step = lambda batch, step: m.train(batch)
+    compute_loss = lambda batch: m.compute_loss(batch)
     scheduler_step = lambda val_loss: m.update_scheduler(val_loss)
     if target_normalization:
         m.v_mean = v_mean
@@ -206,7 +210,7 @@ val_interval = iters // val_total + 1
 
 if save_loss:
     #loss/loss_v/loss_var/loss_p
-    hist_shape = (int(ceil(iters/save_interval)), 8)
+    hist_shape = (int(ceil(iters/save_interval)), 9)
     loss_history = np.empty(hist_shape)
 
 #=========================
@@ -222,12 +226,12 @@ for i in range(iters):
 
     batch = [_arr[idx] for _arr in batch_train]
 
-    loss, loss_v, loss_var, loss_p = train_step(batch,i)
+    loss, loss_v, loss_var, loss_p, loss_ewc = train_step(batch,i)
     
     loss_ma = decay * loss_ma + ( 1 - decay ) * loss
     
     if i % val_interval == 0 and val_episodes > 0:
-        loss_val, loss_val_v, loss_val_var, loss_val_p = compute_loss(batch_val)
+        loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = compute_loss(batch_val)
         scheduler_step(loss_val)
         
     sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i,iters,loss_ma,loss_val))
@@ -242,7 +246,11 @@ for i in range(iters):
             loss_val,
             loss_val_v,
             loss_val_var,
-            loss_val_p)
+            loss_val_p,
+            loss_ewc)
+
+if ewc:
+    m.compute_fisher(batch_train)
 
 sys.stdout.write('\n')
 sys.stdout.flush()
