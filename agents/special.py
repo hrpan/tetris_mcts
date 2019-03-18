@@ -49,4 +49,15 @@ def std_quantile2(nu, t):
 
     return 1 / t_inverse
 
-    
+@vectorize(nopython=True)
+def norm_quantile(t):
+    """
+    Based on 
+    "Very Simply Explicitly Invertible Approximations ofNormal Cumulative and Normal Quantile Function"
+    http://m-hikari.com/ams/ams-2014/ams-85-88-2014/epureAMS85-88-2014.pdf
+    """
+    alpha = 1 - 1 / t
+
+    q = 10 * log(1 - log(-log(alpha) / log(2) )/ log(22)) / log(41)
+
+    return q
