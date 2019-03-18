@@ -31,6 +31,7 @@ class Loss(tables.IsDescription):
     loss_validation_value    = tables.Float32Col()
     loss_validation_variance = tables.Float32Col()
     loss_validation_policy   = tables.Float32Col()
+    loss_ewc                 = tables.Float32Col()
     cycle                    = tables.Int32Col()
 
 class DataSaver:
@@ -173,6 +174,7 @@ class LossSaver:
             self.loss['loss_validation_value'] = l[5]
             self.loss['loss_validation_variance'] = l[6]
             self.loss['loss_validation_policy'] = l[7]
+            self.loss['loss_ewc'] = l[8]
             self.loss['cycle'] = self.cycle
 
             self.loss.append()
