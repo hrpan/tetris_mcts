@@ -1,7 +1,7 @@
 import numpy as np
 import random
 
-from agents.special import std_quantile2
+from agents.special import std_quantile2, norm_quantile
 
 from numba import jit
 from numba import int32, float32
@@ -372,4 +372,58 @@ def select_index_bayes(index, child, node_stats, min_n=10):
         index = _child_nodes[_a]
 
     return np.array(trace, dtype=np.int32)
+
+
+@jit(nopython=True,cache=True)
+def select_index_clt(index,child,node_stats):
+
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        _child_nodes = []
+        for i in range(n_actions):
+            if child[index][i] != 0:
+                _child_nodes.append(child[index][i])
+
+        _child_nodes = list(set(_child_nodes))
+
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
+            break
+
+        has_unvisited_node = False
+
+        _stats = np.zeros((2, len_c), dtype=np.float32)
+
+        _n = 0
+
+        for i in range(len_c):
+            _idx = _child_nodes[i]
+            if node_stats[_idx][0] == 0:
+                index = _idx
+                has_unvisited_node = True
+                break
+            _n += node_stats[_idx][0]
+            _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
+            _stats[1][i] = node_stats[_idx][3] / node_stats[_idx][0]
+
+        if has_unvisited_node:
+            continue
+
+        _c = np.sqrt( _stats[1] ) * norm_quantile(_n)
+
+        _q = _stats[0]
+
+        _v = _q + _c 
+
+        _a = np.argmax(_v)
+
+        index = _child_nodes[_a]
+
+    return np.array(trace, dtype=np.int32)
+
 

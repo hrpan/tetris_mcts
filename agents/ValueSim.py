@@ -1,7 +1,7 @@
 import collections
 import numpy as np
 from agents.agent import Agent
-from agents.core import select_index_3, backup_trace_3, choose_action
+from agents.core import *
 
 eps = 1e-7
 
@@ -18,7 +18,7 @@ class ValueSim(Agent):
         _child = self.arrs['child']
         _node_stats = self.arrs['node_stats']
 
-        trace = select_index_3(root_index, _child, _node_stats)
+        trace = select_index_clt(root_index, _child, _node_stats)
 
         leaf_index = trace[-1]
 
