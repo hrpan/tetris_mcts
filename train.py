@@ -8,7 +8,7 @@ import random
 from util.Data import DataLoader, LossSaver
 from math import ceil
 
-eps = 1e-3
+eps = 0.01
 
 """
 ARGS
@@ -33,7 +33,8 @@ parser.add_argument('--save_interval', default=100, type=int, help='Number of it
 parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
 parser.add_argument('--target_normalization', default=False, help='Standardizes the targets', action='store_true')
 parser.add_argument('--td', default=False, help='Temporal difference update', action='store_true')
-parser.add_argument('--weighted_mse', default=False, help='Use weighted (by (var)^-1 ) least square', action='store_true')
+parser.add_argument('--weighted_mse', default=False, help='Use weighted least square', action='store_true')
+parser.add_argument('--weighted_mse_mode', default=0, type=int, help='0: inverse of variance, 1: number of visits')
 args = parser.parse_args()
 
 backend = args.backend
@@ -56,6 +57,7 @@ shuffle = args.shuffle
 target_normalization = args.target_normalization
 td = args.td
 weighted_mse = args.weighted_mse
+weighted_mse_mode = args.weighted_mse_mode
 
 #========================
 """ 
@@ -100,7 +102,15 @@ if td:
         values = loader.value
         variance = loader.variance
         if weighted_mse:
-            weights = 1 / (variance + eps)
+            if weighted_mse_mode == 0:
+                weights = 1 / (variance + eps)
+            elif weighted_mse_mode == 1:
+                weights = np.sum(loader.child_stats[:, 0], axis=1)
+                weights = weights / np.average(weights)
+            elif weighted_mse_mode == 2:
+                weights = np.sum(loader.child_stats[:, 0], axis=1)
+                weights = weights / np.average(weights)
+                weights = weights / (variance + eps)
         else:
             weights = np.ones(values.shape)
 else:
