@@ -8,7 +8,7 @@ import random
 from util.Data import DataLoader, LossSaver
 from math import ceil
 
-eps = 0.01
+eps = 0.001
 
 """
 ARGS
@@ -26,7 +26,10 @@ parser.add_argument('--ewc_lambda', default=1, type=float, help='Elastic weight 
 parser.add_argument('--last_nfiles', default=1, type=int, help='Use last n files in training only (default:1, -1 for all)')
 parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
+parser.add_argument('--validation', default=False, help='Validation set (default:False)', action='store_true')
 parser.add_argument('--val_episodes', default=0, type=float, help='Number of validation episodes (default:0)')
+parser.add_argument('--val_mode', default=0, type=int, help='Validation mode (0: random, 1:episodic, default:0)')
+parser.add_argument('--val_set_size', default=0.05, type=float, help='Validation set size (fraction of total) (default:0.05)')
 parser.add_argument('--val_total', default=25, type=int, help='Total number of validations (default:25)')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
@@ -49,7 +52,10 @@ ewc_lambda = args.ewc_lambda
 last_nfiles = args.last_nfiles
 max_iters = args.max_iters
 new = args.new
+validation = args.validation
 val_episodes = args.val_episodes
+val_mode = args.val_mode
+val_set_size = args.val_set_size
 val_total = args.val_total
 save_loss = args.save_loss
 save_interval = args.save_interval
@@ -153,15 +159,32 @@ if shuffle:
 """
 VALIDATION SET
 """
-v_idx = np.where(loader.episode < val_episodes + 1)
-t_idx = np.where(loader.episode >= val_episodes + 1)
+if validation:
+    if val_mode == 0:
+        if val_set_size <= 0: 
+            t_idx = list(range(len(states)))
+            v_idx = []
+        elif val_set_size >= 1:
+            t_idx = []
+            v_idx = list(range(len(states)))
+        else:
+            n_val_data = len(states) * val_set_size
+            v_idx = np.random.choice(len(states), size=n_val_data)
+            t_idx = [x for x in range(len(states)) if x not in v_idx] 
+    elif val_mode == 1:
+        if val_episodes <= 0:    
+            t_idx = list(range(len(states)))
+            v_idx = []
+        else:
+            v_idx = np.where(loader.episode < val_episodes + 1)
+            t_idx = np.where(loader.episode >= val_episodes + 1)
 
-n_data = len(t_idx[0])
+    batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
 
-batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
-
-batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx], weights[t_idx]]
-
+    batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx], weights[t_idx]]
+else:
+    batch_train = [states, values, variance, policy, weights]
+n_data = len(batch_train[0])
 #=========================
 """
 TARGET NORMALIZATION
@@ -229,7 +252,7 @@ TRAINING ITERATION
 """
 loss_ma = 0
 decay = 0.99
-loss_val = 0
+loss_val, loss_val_v, loss_val_var, loss_val_p = 0, 0, 0, 0
 
 for i in range(iters):
     idx = np.random.randint(n_data,size=batch_size)
@@ -240,7 +263,7 @@ for i in range(iters):
     
     loss_ma = decay * loss_ma + ( 1 - decay ) * loss
     
-    if i % val_interval == 0 and val_episodes > 0:
+    if validation and i % val_interval == 0:
         loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = compute_loss(batch_val)
         scheduler_step(loss_val)
         
