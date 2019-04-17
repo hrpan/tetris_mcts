@@ -90,6 +90,8 @@ if selfplay:
 
 if save:
     saver = DataSaver(save_dir, save_file, cycle)
+    saver_all = DataSaver(save_dir, save_file + '_all', cycle)
+    agent.saver = saver_all 
 
 tracker = ScoreTracker()
 
@@ -139,6 +141,8 @@ while True:
 sys.stdout.write('\n')
 sys.stdout.flush()
 
+agent.close()     
 
 if save:
-   saver.close() 
+    saver.close()
+
