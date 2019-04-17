@@ -5,7 +5,7 @@ from agents.core import get_all_childs
 
 class Agent:
 
-    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7):
+    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7, saver=None):
 
         self.sims = sims
         
@@ -16,6 +16,8 @@ class Agent:
         self.env_args = env_args
 
         self.n_actions = n_actions
+
+        self.saver = saver
 
         self.init_array()
         self.init_model()
@@ -177,6 +179,9 @@ class Agent:
         self.available = list(set(range(self.max_nodes)) - _c)
         sys.stderr.write('Number of available nodes: ' + str(len(self.available)) + '\n')
 
+        if self.saver:
+            self.save_nodes(self.available)
+
         for idx in self.available:
             _g = self.game_arr[idx]
 
@@ -187,7 +192,39 @@ class Agent:
             self.arrs['child'][idx] = 0
             self.arrs['child_stats'][idx] = 0
             self.arrs['node_stats'][idx] = 0
-             
+
+    def save_nodes(self, nodes_to_save, min_visits=10):
+
+        saver = self.saver
+
+        node_stats = self.arrs['node_stats']
+
+        for idx in nodes_to_save:
+
+            if node_stats[idx][0] < min_visits:           
+                continue
+
+            _tmp_stats = self.compute_stats(idx)
+            if _tmp_stats is False:
+                continue
+
+            _g = self.game_arr[idx]
+            v, var = self.get_value(idx)
+
+            saver.add_raw(0, 
+                _g.getState(), 
+                _tmp_stats[0] / _tmp_stats[0].sum(), 
+                np.argmax(_tmp_stats[1]),
+                _g.getCombo(),
+                _g.getLines(),
+                _g.getScore(),
+                _tmp_stats,
+                v,
+                var)            
+
+    def save_occupied(self):
+        
+        self.save_nodes(self.occupied) 
 
     def set_root(self,game):
 
@@ -197,4 +234,8 @@ class Agent:
 
         self.set_root(game)
 
+    def close(self):
 
+        if self.saver:
+            self.save_occupied()
+        self.saver.close()
