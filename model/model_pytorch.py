@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import os
 import numpy as np
 import sys
+import gc
 from torch.autograd import Variable
 
 IMG_H, IMG_W, IMG_C = (22,10,1)
@@ -45,10 +46,10 @@ class Net(torch.jit.ScriptModule):
 
     @torch.jit.script_method
     def forward(self, x):
-        x = self.bn1(F.relu(self.conv1(x)))
-        #x = F.relu(self.conv1(x))
-        x = self.bn2(F.relu(self.conv2(x)))
-        #x = F.relu(self.conv2(x))
+        #x = self.bn1(F.relu(self.conv1(x)))
+        x = F.relu(self.conv1(x))
+        #x = self.bn2(F.relu(self.conv2(x)))
+        x = F.relu(self.conv2(x))
         x = x.view(x.shape[0], -1)
     
         x = F.relu(self.fc1(x))
@@ -65,7 +66,7 @@ class Model:
     def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1):
 
         self.model = Net()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, amsgrad=True)
         self.scheduler = None
 
         self.v_mean = 0
@@ -83,20 +84,20 @@ class Model:
 
     def _loss(self, batch):
 
-        state = convert(batch[0])
-        value = convert(batch[1])
-        variance = convert(batch[2])
-        policy = convert(batch[3])
+        state = torch.from_numpy(batch[0])
+        value = torch.from_numpy(batch[1])
+        variance = torch.from_numpy(batch[2])
+        policy = torch.from_numpy(batch[3])
         
         _v, _var, _p = self.model(state)
         if self.weighted_mse:
-            weight = convert(batch[4])
+            weight = torch.from_numpy(batch[4])
             loss_v = (weight * (_v - value) ** 2).mean()
         else:
             loss_v = F.mse_loss(_v, value)
         #loss_v = Variable(torch.FloatTensor([0]))
-        loss_var = F.mse_loss(_var, variance)
-        #loss_var = Variable(torch.FloatTensor([0]))
+        #loss_var = F.mse_loss(_var, variance)
+        loss_var = Variable(torch.FloatTensor([0]))
         #loss_p = F.kl_div(torch.log(_p),policy)
         loss_p = Variable(torch.FloatTensor([0]))
 
@@ -146,10 +147,10 @@ class Model:
 
         self.optimizer.step()
 
-        result = [l.data.numpy() for l in losses]
+        result = [l.item() for l in losses]
 
         if self.ewc:
-            result.append(self.compute_ewc_loss().data.numpy())
+            result.append(self.compute_ewc_loss().item())
         else:
             result.append(0)
 
