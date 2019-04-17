@@ -78,6 +78,28 @@ class DataSaver:
         if self.iter == 0:
             self.table.flush()
 
+    def add_raw(self, episode, board, policy, action, combo, lines, score, child_stats, value, variance):
+
+        self.iter += 1
+        self.state['episode'] = episode
+        self.state['board'] = board
+        self.state['policy'] = policy
+        self.state['action'] = action
+        self.state['combo'] = combo
+        self.state['lines'] = lines
+        self.state['score'] = score
+        self.state['child_stats'] = child_stats
+        self.state['cycle'] = self.cycle
+        self.state['value'] = value
+        self.state['variance'] = variance
+
+        self.state.append()
+
+        self.iter = self.iter % self.chunksize
+
+        if self.iter == 0:
+            self.table.flush()
+
     def close(self):
         
         self.table.flush()
