@@ -55,15 +55,15 @@ class Net(torch.jit.ScriptModule):
         x = F.relu(self.fc1(x))
         
         policy = F.softmax(self.fc_p(x), dim=1)
-        value = self.fc_v(x)
-        var = self.fc_var(x)
+        value = torch.exp(self.fc_v(x))
+        var = torch.exp(self.fc_var(x))
         return value, var, policy
 
 def convert(x):
     return torch.from_numpy(x.astype(np.float32))
 
 class Model:
-    def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1):
+    def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True):
 
         self.model = Net()
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, amsgrad=True)
@@ -80,6 +80,8 @@ class Model:
         self.ewc = ewc
         self.ewc_lambda = ewc_lambda
 
+        self.mle_gauss = mle_gauss
+
         self.fisher = None
 
     def _loss(self, batch):
@@ -90,19 +92,24 @@ class Model:
         policy = torch.from_numpy(batch[3])
         
         _v, _var, _p = self.model(state)
-        if self.weighted_mse:
+        if self.mle_gauss:
             weight = torch.from_numpy(batch[4])
-            loss_v = (weight * (_v - value) ** 2).mean()
+            loss = (weight * (torch.log(_var) + variance / _var + ((value - _v) ** 2 ) / _var)).mean()
+            return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
         else:
-            loss_v = F.mse_loss(_v, value)
-        #loss_v = Variable(torch.FloatTensor([0]))
-        #loss_var = F.mse_loss(_var, variance)
-        loss_var = Variable(torch.FloatTensor([0]))
-        #loss_p = F.kl_div(torch.log(_p),policy)
-        loss_p = Variable(torch.FloatTensor([0]))
+            if self.weighted_mse:
+                weight = torch.from_numpy(batch[4])
+                loss_v = (weight * (_v - value) ** 2).mean()
+            else:
+                loss_v = F.mse_loss(_v, value)
+            #loss_v = Variable(torch.FloatTensor([0]))
+            #loss_var = F.mse_loss(_var, variance)
+            loss_var = Variable(torch.FloatTensor([0]))
+            #loss_p = F.kl_div(torch.log(_p),policy)
+            loss_p = Variable(torch.FloatTensor([0]))
 
-        loss = loss_v + loss_var + loss_p
-        return loss, loss_v, loss_var, loss_p
+            loss = loss_v + loss_var + loss_p
+            return loss, loss_v, loss_var, loss_p
 
     def compute_ewc_loss(self):
 
@@ -187,6 +194,19 @@ class Model:
         result[1] = result[1] * self.var_std + self.var_mean
 
         return result
+
+    def inference_stochastic(self,batch):
+
+        self.model.eval()
+
+        state = convert(batch)
+        
+        with torch.no_grad():
+            output = self.model(state)
+
+        v = np.random.normal(output[0], np.sqrt(output[1]))
+        return [v, output[1], output[2]]
+
 
     def update_scheduler(self,val_loss):
 
