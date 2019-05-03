@@ -186,6 +186,9 @@ class LossSaver:
 
         self.loss = self.table.row
 
+        self.iter = 0
+        self.chunksize = 512
+
     def add(self, losses):
         for l in losses:
             self.loss['loss_train'] = l[0]
@@ -203,8 +206,29 @@ class LossSaver:
 
         self.table.flush()
 
+    def add_raw(self, losses):
+
+        self.iter += 1
+
+        self.loss['loss_train'] = l[0]
+        self.loss['loss_train_value'] = l[1]
+        self.loss['loss_train_variance'] = l[2]
+        self.loss['loss_train_policy'] = l[3]
+        self.loss['loss_validation'] = l[4]
+        self.loss['loss_validation_value'] = l[5]
+        self.loss['loss_validation_variance'] = l[6]
+        self.loss['loss_validation_policy'] = l[7]
+        self.loss['loss_ewc'] = l[8]
+        self.loss['cycle'] = self.cycle
+
+        self.loss.append()
+                
+        self.iter = self.iter % self.chunksize
+        if self.iter == 0:
+            self.table.flush()
+
     def close(self):
-    
+        self.table.flush() 
         self.file.close()
 
 
