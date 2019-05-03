@@ -7,11 +7,13 @@ eps = 1e-7
 
 class ValueSim(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, n_actions=7):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.05, n_actions=7):
 
         super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions)
 
         self.g_tmp = env(*env_args)
+
+        self.backup_alpha = backup_alpha
 
     def mcts(self,root_index):
 
@@ -42,36 +44,41 @@ class ValueSim(Agent):
                 _child[leaf_index][i] = _n
                 _node_stats[_n][2] = _g.getScore()
 
-        backup_trace_3(trace, _node_stats, value)
+        backup_trace_3(trace, _node_stats, value, alpha=self.backup_alpha)
 
-    def compute_stats(self):
+    def compute_stats(self, node=None):
+
+        if node == None:
+            node = self.root
+
         _stats = np.zeros((6, self.n_actions), dtype=np.float32)
 
-        _childs = self.arrs['child'][self.root]
+        _childs = self.arrs['child'][node]
         _ns = self.arrs['node_stats']
 
         counter = collections.Counter(_childs)        
 
-        root_score = _ns[self.root][2]        
+        root_score = _ns[node][2]        
 
         _stats[2] = 0
         for i in range(self.n_actions):
             _idx = _childs[i]
-            if counter[_idx] == 0:
-                _stats[0][i] = 0
-                _stats[1][i] = 0
-            else:
-                _stats[0][i] = _ns[_idx][0] / counter[_idx]
-                _stats[1][i] = ( _ns[_idx][1] + _ns[_idx][2] - root_score ) * _ns[_idx][0]
+            if _ns[_idx][0] < 1:
+                return False
+            _stats[0][i] = _ns[_idx][0] / counter[_idx]
+            _stats[1][i] = _ns[_idx][1] + _ns[_idx][2] - root_score
             _stats[3][i] = _ns[_idx][1] + _ns[_idx][2] - root_score
             _stats[4][i] = _ns[_idx][3]
             _stats[5][i] = _ns[_idx][4]
 
         return _stats
 
-    def get_value(self):
+    def get_value(self, node=None):
 
-        _ns = self.arrs['node_stats'][self.root]
+        if node == None:
+            node = self.root
+
+        _ns = self.arrs['node_stats'][node]
 
         return _ns[1], _ns[3] 
 
