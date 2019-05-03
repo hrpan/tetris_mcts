@@ -5,9 +5,9 @@ import sys
 import glob
 import argparse
 import random
+import gc
 from util.Data import DataLoader, LossSaver
 from math import ceil
-
 eps = 0.001
 
 """
@@ -30,6 +30,7 @@ parser.add_argument('--validation', default=False, help='Validation set (default
 parser.add_argument('--val_episodes', default=0, type=float, help='Number of validation episodes (default:0)')
 parser.add_argument('--val_mode', default=0, type=int, help='Validation mode (0: random, 1:episodic, default:0)')
 parser.add_argument('--val_set_size', default=0.05, type=float, help='Validation set size (fraction of total) (default:0.05)')
+parser.add_argument('--val_set_size_max', default=5000, type=int, help='Maximum validation set size (default:10000)')
 parser.add_argument('--val_total', default=25, type=int, help='Total number of validations (default:25)')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
@@ -56,6 +57,7 @@ validation = args.validation
 val_episodes = args.val_episodes
 val_mode = args.val_mode
 val_set_size = args.val_set_size
+val_set_size_max = args.val_set_size_max
 val_total = args.val_total
 save_loss = args.save_loss
 save_interval = args.save_interval
@@ -137,6 +139,7 @@ if backend == 'pytorch':
     states = np.expand_dims(loader.board, 1).astype(np.float32)
     policy = loader.policy.astype(np.float32)
     values = np.expand_dims(values, -1).astype(np.float32)
+    variance = np.expand_dims(variance, -1).astype(np.float32)
     weights = np.expand_dims(weights, -1).astype(np.float32)
 elif backend == 'tensorflow':
     states = np.expand_dims(np.stack(loader['board'].values),-1)
@@ -168,8 +171,8 @@ if validation:
             t_idx = []
             v_idx = list(range(len(states)))
         else:
-            n_val_data = len(states) * val_set_size
-            v_idx = np.random.choice(len(states), size=n_val_data)
+            n_val_data = int(len(states) * val_set_size)
+            v_idx = np.random.choice(len(states), size=min(n_val_data, val_set_size_max))
             t_idx = [x for x in range(len(states)) if x not in v_idx] 
     elif val_mode == 1:
         if val_episodes <= 0:    
@@ -270,7 +273,7 @@ for i in range(iters):
     sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i,iters,loss_ma,loss_val))
     sys.stdout.flush()
         
-    if i % save_interval == 0 and save_loss:
+    if save_loss and i % save_interval == 0:
         _idx = i // save_interval
         loss_history[_idx] = (loss, 
             loss_v, 
