@@ -90,7 +90,7 @@ if selfplay:
 
 if save:
     saver = DataSaver(save_dir, save_file, cycle)
-    saver_all = DataSaver(save_dir, save_file + '_all', cycle)
+    saver_all = DataSaver(save_dir, 'tree', cycle)
     agent.saver = saver_all 
 
 tracker = ScoreTracker()
