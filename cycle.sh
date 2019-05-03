@@ -7,12 +7,15 @@ curr_cycle=1
 #TRAIN ARGS
 last_nfiles=1
 n_worker=1
-val_eps=5
+val_mode=0
+val_eps=10
+batch_size=128
+epochs=10
 
 #PLAY ARGS
-ngames=250
-agent_type=ValueSimBayes
-n_sims=300
+ngames=100
+agent_type=ValueSim
+n_sims=500
 n_sims_bench=1000
 
 while getopts ":cr" opt;do
@@ -38,21 +41,25 @@ done
 DATA_PATHS=""
 for ((i=1; i<=${n_worker}; i++)){
     mkdir -p data/self${i}
-    DATA_PATHS+=" data/self${i}/*" 
+    #DATA_PATHS+=" data/self${i}/*" 
+    DATA_PATHS+=" data/self${i}/tree*" 
 }
 mkdir -p data/benchmark
 
 for ((x=$curr_cycle; x<200; x++)){
     echo Cycle $x 
     python train.py --td \
-        --target_normalization \
+        --weighted_mse \
+        --weighted_mse_mode 1 \
         --save_loss \
-        --batch_size 32 \
-        --epochs 10 \
+        --batch_size $batch_size \
+        --epochs $epochs \
         --data_paths $DATA_PATHS \
+        --validation \
         --val_episodes $val_eps \
-        --last_nfiles $last_nfiles \
+        --val_mode $val_mode \
         --val_total 100 \
+        --last_nfiles $last_nfiles \
         --save_interval 250 >> logs/log_train 2>> logs/log_err
 
     for ((i=1; i<=$n_worker; i++)){
