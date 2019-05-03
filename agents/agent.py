@@ -230,8 +230,9 @@ class Agent:
                 var)            
 
     def save_occupied(self):
-        
-        self.save_nodes(self.occupied) 
+
+        if self.saver:        
+            self.save_nodes(self.occupied) 
 
     def set_root(self,game):
 
