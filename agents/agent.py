@@ -5,7 +5,7 @@ from agents.core import get_all_childs
 
 class Agent:
 
-    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7, saver=None):
+    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7, saver=None, stochastic_inference=False, min_visits=30):
 
         self.sims = sims
         
@@ -15,9 +15,13 @@ class Agent:
         self.env = env
         self.env_args = env_args
 
+        self.min_visits = min_visits
+
         self.n_actions = n_actions
 
         self.saver = saver
+
+        self.stochastic_inference = stochastic_inference
 
         self.init_array()
         self.init_model()
@@ -60,7 +64,10 @@ class Agent:
             self.model = Model()
             self.model.load()
 
-            self.inference = lambda state: self.model.inference(state[None,None,:,:])
+            if self.stochastic_inference:
+                self.inference = lambda state: self.model.inference_stochastic(state[None,None,:,:])
+            else:
+                self.inference = lambda state: self.model.inference(state[None,None,:,:])
 
         else:
             self.model = None
@@ -193,7 +200,7 @@ class Agent:
             self.arrs['child_stats'][idx] = 0
             self.arrs['node_stats'][idx] = 0
 
-    def save_nodes(self, nodes_to_save, min_visits=10):
+    def save_nodes(self, nodes_to_save):
 
         saver = self.saver
 
@@ -201,7 +208,7 @@ class Agent:
 
         for idx in nodes_to_save:
 
-            if node_stats[idx][0] < min_visits:           
+            if node_stats[idx][0] < self.min_visits:           
                 continue
 
             _tmp_stats = self.compute_stats(idx)
