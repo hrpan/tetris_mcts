@@ -296,8 +296,7 @@ def select_index_3(index,child,node_stats):
     return np.array(trace, dtype=np.int32)
 
 @jit(nopython=True,cache=True)
-def backup_trace_3(trace,node_stats,value):
-    alpha = 0.01
+def backup_trace_3(trace,node_stats,value,alpha=0.01):
     for idx in trace:
         v = value - node_stats[idx][2] 
         if node_stats[idx][0] == 0:
@@ -352,7 +351,7 @@ def select_index_bayes(index, child, node_stats, min_n=10):
             _n += node_stats[_idx][0]
 
             _stats[0][i] = node_stats[_idx][0]
-            _stats[1][i] = node_stats[_idx][1] / node_stats[_idx][0] + node_stats[_idx][2] - node_stats[index][2]
+            _stats[1][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
             _stats[2][i] = node_stats[_idx][3] / ( node_stats[_idx][0] - 1 )
 
         if low_nodes:
