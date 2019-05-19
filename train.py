@@ -24,13 +24,14 @@ parser.add_argument('--epochs', default=10, type=int, help='Training epochs (def
 parser.add_argument('--ewc', default=False, help='Elastic weight consolidation (default:False)', action='store_true')
 parser.add_argument('--ewc_lambda', default=1, type=float, help='Elastic weight consolidation importance parameter(default:1)')
 parser.add_argument('--last_nfiles', default=1, type=int, help='Use last n files in training only (default:1, -1 for all)')
+parser.add_argument('--min_iters', default=2000, type=int, help='Min training iterations (default:2000, negative for unlimited)')
 parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
 parser.add_argument('--validation', default=False, help='Validation set (default:False)', action='store_true')
 parser.add_argument('--val_episodes', default=0, type=float, help='Number of validation episodes (default:0)')
 parser.add_argument('--val_mode', default=0, type=int, help='Validation mode (0: random, 1:episodic, default:0)')
 parser.add_argument('--val_set_size', default=0.05, type=float, help='Validation set size (fraction of total) (default:0.05)')
-parser.add_argument('--val_set_size_max', default=5000, type=int, help='Maximum validation set size (default:10000)')
+parser.add_argument('--val_set_size_max', default=5000, type=int, help='Maximum validation set size (default:5000)')
 parser.add_argument('--val_total', default=25, type=int, help='Total number of validations (default:25)')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
@@ -51,6 +52,7 @@ epochs = args.epochs
 ewc = args.ewc
 ewc_lambda = args.ewc_lambda
 last_nfiles = args.last_nfiles
+min_iters = args.min_iters
 max_iters = args.max_iters
 new = args.new
 validation = args.validation
@@ -123,15 +125,16 @@ if td:
             weights = np.ones(values.shape)
 else:
     values = np.zeros((len(loader.score), ), dtype=np.float32)
+    idx = 0
     while idx < len(loader.episode):
-        idx_end = idx + 1
-        while idx_end < len(loader.episode):
-            if idx == len(loader.episode) - 1 or loader.episode[idx] != loader.episode[idx+1]:
-                ep_score = loader.score[idx_end]
+        for idx_end in range(idx, len(loader.episode)):
+            if loader.episode[idx] != loader.episode[idx_end]:
+                idx_end -= 1
                 break
+        ep_score = loader.score[idx_end]
         for _i in range(idx, idx_end+1):
             values[_i] = ep_score - loader.score[_i]
-        idx = idx_end
+        idx = idx_end + 1
     variance = loader.variance 
     weights = np.ones(values.shape)
 
@@ -172,7 +175,7 @@ if validation:
             v_idx = list(range(len(states)))
         else:
             n_val_data = int(len(states) * val_set_size)
-            v_idx = np.random.choice(len(states), size=min(n_val_data, val_set_size_max))
+            v_idx = np.random.choice(len(states), size=min(n_val_data, val_set_size_max), replace=False)
             t_idx = [x for x in range(len(states)) if x not in v_idx] 
     elif val_mode == 1:
         if val_episodes <= 0:    
@@ -180,8 +183,10 @@ if validation:
             v_idx = []
         else:
             v_idx = np.where(loader.episode < val_episodes + 1)
+            idx = np.random.choice(len(v_idx[0]), size=min(len(v_idx[0]), val_set_size_max), replace=False)
+            v_idx = (v_idx[0][idx],)
             t_idx = np.where(loader.episode >= val_episodes + 1)
-
+            
     batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
 
     batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx], weights[t_idx]]
@@ -237,10 +242,13 @@ elif backend == 'tensorflow':
 
 iters_per_epoch = n_data//batch_size
 
+iters = int(epochs * iters_per_epoch)
+
 if max_iters >= 0:
-    iters = int(min( epochs * iters_per_epoch, max_iters))
-else:
-    iters = int(epochs * iters_per_epoch)
+    iters = int(min(iters, max_iters))
+
+if min_iters >= 0:
+    iters = int(max(iters, min_iters))
 
 val_interval = iters // val_total + 1
 
