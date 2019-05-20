@@ -15,6 +15,8 @@ class Agent:
         self.env = env
         self.env_args = env_args
 
+        self.episode = 0
+
         self.min_visits = min_visits
 
         self.n_actions = n_actions
@@ -31,10 +33,12 @@ class Agent:
         child_arr = np.zeros((self.init_nodes, self.n_actions), dtype = np.int32)
         child_stats_arr = np.zeros((self.init_nodes, 6, self.n_actions), dtype = np.float32)
         node_stats_arr = np.zeros((self.init_nodes, 5), dtype = np.float32)
+        node_ep_arr = np.zeros((self.init_nodes, ), dtype = np.int32)
         self.arrs = {
                 'child':child_arr,
                 'child_stats':child_stats_arr,
                 'node_stats':node_stats_arr,
+                'node_ep':node_ep_arr,
                 }
 
         self.game_arr = [self.env(*self.env_args) for i in range(self.init_nodes)]
@@ -119,6 +123,8 @@ class Agent:
             _g = self.game_arr[idx]
 
             _g.copy_from(game)
+
+            self.arrs['node_ep'][idx] = self.episode
 
             self.node_index_dict[_g] = idx
 
@@ -206,6 +212,8 @@ class Agent:
 
         node_stats = self.arrs['node_stats']
 
+        node_ep = self.arrs['node_ep']
+
         for idx in nodes_to_save:
 
             if node_stats[idx][0] < self.min_visits:           
@@ -216,9 +224,10 @@ class Agent:
                 continue
 
             _g = self.game_arr[idx]
+
             v, var = self.get_value(idx)
 
-            saver.add_raw(0, 
+            saver.add_raw(node_ep[idx], 
                 _g.getState(), 
                 _tmp_stats[0] / _tmp_stats[0].sum(), 
                 np.argmax(_tmp_stats[1]),
@@ -238,9 +247,13 @@ class Agent:
 
         self.root = self.new_node(game)
 
-    def update_root(self,game):
+    def update_root(self,game,episode=0):
+
+        self.episode = episode
 
         self.set_root(game)
+
+        self.arrs['node_stats'][self.root][2] = game.getScore()
 
     def close(self):
 
