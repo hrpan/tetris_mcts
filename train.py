@@ -31,7 +31,7 @@ parser.add_argument('--validation', default=False, help='Validation set (default
 parser.add_argument('--val_episodes', default=0, type=float, help='Number of validation episodes (default:0)')
 parser.add_argument('--val_mode', default=0, type=int, help='Validation mode (0: random, 1:episodic, default:0)')
 parser.add_argument('--val_set_size', default=0.05, type=float, help='Validation set size (fraction of total) (default:0.05)')
-parser.add_argument('--val_set_size_max', default=5000, type=int, help='Maximum validation set size (default:5000)')
+parser.add_argument('--val_set_size_max', default=-1, type=int, help='Maximum validation set size (default:-1, negative for unlimited)')
 parser.add_argument('--val_total', default=25, type=int, help='Total number of validations (default:25)')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
@@ -175,7 +175,10 @@ if validation:
             v_idx = list(range(len(states)))
         else:
             n_val_data = int(len(states) * val_set_size)
-            v_idx = np.random.choice(len(states), size=min(n_val_data, val_set_size_max), replace=False)
+            if val_set_size_max > 0:
+                v_idx = np.random.choice(len(states), size=min(n_val_data, val_set_size_max), replace=False)
+            else:
+                v_idx = np.random.choice(len(states), size=n_val_data, replace=False)
             t_idx = [x for x in range(len(states)) if x not in v_idx] 
     elif val_mode == 1:
         if val_episodes <= 0:    
@@ -183,8 +186,9 @@ if validation:
             v_idx = []
         else:
             v_idx = np.where(loader.episode < val_episodes + 1)
-            idx = np.random.choice(len(v_idx[0]), size=min(len(v_idx[0]), val_set_size_max), replace=False)
-            v_idx = (v_idx[0][idx],)
+            if val_set_size_max > 0:
+                idx = np.random.choice(len(v_idx[0]), size=min(len(v_idx[0]), val_set_size_max), replace=False)
+                v_idx = (v_idx[0][idx],)
             t_idx = np.where(loader.episode >= val_episodes + 1)
             
     batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
@@ -263,6 +267,7 @@ TRAINING ITERATION
 """
 loss_ma = 0
 decay = 0.99
+chunksize = 1000
 loss_val, loss_val_v, loss_val_var, loss_val_p = 0, 0, 0, 0
 
 for i in range(iters):
@@ -275,7 +280,20 @@ for i in range(iters):
     loss_ma = decay * loss_ma + ( 1 - decay ) * loss
     
     if validation and i % val_interval == 0:
-        loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = compute_loss(batch_val)
+        loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = 0, 0, 0, 0, 0
+        val_idx = 0
+        while val_idx < len(batch_val[0]):
+            if val_idx + chunksize < len(batch_val[0]):
+                b_val = [_arr[val_idx:val_idx+chunksize] for _arr in batch_val] 
+            else:
+                b_val = [_arr[val_idx:] for _arr in batch_val]
+            _l_val, _l_val_v, _l_val_var, _l_val_p, _l_ewc = compute_loss(b_val)
+            loss_val += len(b_val[0]) * _l_val / len(batch_val[0])
+            loss_val_v += len(b_val[0]) * _l_val_v / len(batch_val[0])
+            loss_val_var += len(b_val[0]) * _l_val_var / len(batch_val[0])
+            loss_val_p += len(b_val[0]) * _l_val_p / len(batch_val[0])
+            loss_ewc += len(b_val[0]) * _l_ewc / len(batch_val[0])
+            val_idx += chunksize
         scheduler_step(loss_val)
         
     sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i,iters,loss_ma,loss_val))
