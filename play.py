@@ -86,7 +86,7 @@ if selfplay:
     _agent_module = import_module('agents.'+agent_type)
     Agent = getattr(_agent_module,agent_type)
     agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args, n_actions = 7)
-    agent.set_root(game)
+    agent.update_root(game, ngames)
 
 if save:
     saver = DataSaver(save_dir, save_file, cycle)
@@ -117,7 +117,7 @@ while True:
     game.play(action)
     
     if selfplay:
-        agent.update_root(game)
+        agent.update_root(game, ngames)
 
     if game.end:
         if interactive:
@@ -136,7 +136,7 @@ while True:
                 break
             else:
                 game.reset()
-                agent.set_root(game)
+                agent.update_root(game, ngames)
 
 sys.stdout.write('\n')
 sys.stdout.flush()
