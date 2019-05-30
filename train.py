@@ -18,14 +18,16 @@ parser.add_argument('--backend', default='pytorch', type=str, help='DL backend')
 parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default:32)')
 parser.add_argument('--cycle', default=-1, type=int, help='Cycle (default:-1)')
 parser.add_argument('--data_paths', default=[], nargs='*', help='Training data paths (default: empty list)')
+parser.add_argument('--early_stopping', default=False, help='Use early stopping', action='store_true')
+parser.add_argument('--early_stopping_patience', default=10, type=int, help='Early stopping patience (default:10)')
 parser.add_argument('--eligibility_trace', default=False, action='store_true', help='Use eligibility trace')
 parser.add_argument('--eligibility_trace_lambda', default=0.9, type=float, help='Lambda in eligibility trace (default:0.9)')
 parser.add_argument('--epochs', default=10, type=int, help='Training epochs (default:10)')
 parser.add_argument('--ewc', default=False, help='Elastic weight consolidation (default:False)', action='store_true')
 parser.add_argument('--ewc_lambda', default=1, type=float, help='Elastic weight consolidation importance parameter(default:1)')
 parser.add_argument('--last_nfiles', default=1, type=int, help='Use last n files in training only (default:1, -1 for all)')
-parser.add_argument('--min_iters', default=2000, type=int, help='Min training iterations (default:2000, negative for unlimited)')
-parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:100000, negative for unlimited)')
+parser.add_argument('--min_iters', default=-1, type=int, help='Min training iterations (default:-1, negative for unlimited)')
+parser.add_argument('--max_iters', default=-1, type=int, help='Max training iterations (default:-1, negative for unlimited)')
 parser.add_argument('--new', default=False, help='Create a new model instead of training the old one', action='store_true')
 parser.add_argument('--validation', default=False, help='Validation set (default:False)', action='store_true')
 parser.add_argument('--val_episodes', default=0, type=float, help='Number of validation episodes (default:0)')
@@ -46,6 +48,8 @@ backend = args.backend
 batch_size = args.batch_size
 cycle = args.cycle
 data_paths = args.data_paths
+early_stopping = args.early_stopping
+early_stopping_patience = args.early_stopping_patience
 eligibility_trace = args.eligibility_trace
 eligibility_trace_lambda = args.eligibility_trace_lambda
 epochs = args.epochs
@@ -190,7 +194,7 @@ if validation:
                 idx = np.random.choice(len(v_idx[0]), size=min(len(v_idx[0]), val_set_size_max), replace=False)
                 v_idx = (v_idx[0][idx],)
             t_idx = np.where(loader.episode >= val_episodes + 1)
-            
+
     batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
 
     batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx], weights[t_idx]]
@@ -267,49 +271,105 @@ TRAINING ITERATION
 """
 loss_ma = 0
 decay = 0.99
-chunksize = 1000
 loss_val, loss_val_v, loss_val_var, loss_val_p = 0, 0, 0, 0
 
-for i in range(iters):
-    idx = np.random.randint(n_data,size=batch_size)
+def loss_by_chunk(batch, chunksize=1000):
+    loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = 0, 0, 0, 0, 0
+    val_idx = 0
+    length = len(batch[0])
+    while val_idx < length:
+        if val_idx + chunksize < length:
+            b_val = [_arr[val_idx:val_idx+chunksize] for _arr in batch] 
+        else:
+            b_val = [_arr[val_idx:] for _arr in batch]
+        _l_val, _l_val_v, _l_val_var, _l_val_p, _l_ewc = compute_loss(b_val)
+        loss_val += len(b_val[0]) * _l_val / length
+        loss_val_v += len(b_val[0]) * _l_val_v / length
+        loss_val_var += len(b_val[0]) * _l_val_var / length
+        loss_val_p += len(b_val[0]) * _l_val_p / length
+        loss_ewc += len(b_val[0]) * _l_ewc / length
+        val_idx += chunksize
+    return loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc
 
-    batch = [_arr[idx] for _arr in batch_train]
+if early_stopping:
+    if not validation or len(batch_val[0]) == 0:
+        raise Exception('Early stopping without validation')
 
-    loss, loss_v, loss_var, loss_p, loss_ewc = train_step(batch,i)
-    
-    loss_ma = decay * loss_ma + ( 1 - decay ) * loss
-    
-    if validation and i % val_interval == 0:
-        loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = 0, 0, 0, 0, 0
-        val_idx = 0
-        while val_idx < len(batch_val[0]):
-            if val_idx + chunksize < len(batch_val[0]):
-                b_val = [_arr[val_idx:val_idx+chunksize] for _arr in batch_val] 
-            else:
-                b_val = [_arr[val_idx:] for _arr in batch_val]
-            _l_val, _l_val_v, _l_val_var, _l_val_p, _l_ewc = compute_loss(b_val)
-            loss_val += len(b_val[0]) * _l_val / len(batch_val[0])
-            loss_val_v += len(b_val[0]) * _l_val_v / len(batch_val[0])
-            loss_val_var += len(b_val[0]) * _l_val_var / len(batch_val[0])
-            loss_val_p += len(b_val[0]) * _l_val_p / len(batch_val[0])
-            loss_ewc += len(b_val[0]) * _l_ewc / len(batch_val[0])
-            val_idx += chunksize
-        scheduler_step(loss_val)
+    loss_val_best = 1e10
+
+    _epoch = 0
+
+    _p = 0
+    sys.stdout.write('\n')
+
+    loss_history = []
+
+    while _p < early_stopping_patience:
         
-    sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i,iters,loss_ma,loss_val))
-    sys.stdout.flush()
+        loss_avg = [0, 0, 0, 0, 0]
+
+        for i in range(iters_per_epoch):
+
+            idx = np.random.randint(n_data, size=batch_size)
+
+            batch = [_arr[idx] for _arr in batch_train]
+            
+            _loss = train_step(batch, i)
+
+            for j in range(5):
+                loss_avg[j] += _loss[j]
+
+        loss_avg = [l / iters_per_epoch for l in loss_avg]
+
+        _epoch += 1
+
+        loss_val = loss_by_chunk(batch_val)
+
+        if loss_val[0] < loss_val_best:
+            loss_val_best = loss_val[0]
+            _p = 0  
+            m.save(verbose=False)
+            suffix = ' (Current best model) '
+        else:
+            _p += 1
+            suffix = ''
+
+        sys.stdout.write('epoch:%d loss: %.5f/%.5f %s\n' %(_epoch, loss_avg[0], loss_val[0], suffix))
+        sys.stdout.flush()
+
+        if save_loss:
+            loss_history.append([*loss_avg[:4],*loss_val])
+
+    loss_history = np.array(loss_history)
+else:
+    for i in range(iters):
+        idx = np.random.randint(n_data,size=batch_size)
+
+        batch = [_arr[idx] for _arr in batch_train]
         
-    if save_loss and i % save_interval == 0:
-        _idx = i // save_interval
-        loss_history[_idx] = (loss, 
-            loss_v, 
-            loss_var,
-            loss_p,
-            loss_val,
-            loss_val_v,
-            loss_val_var,
-            loss_val_p,
-            loss_ewc)
+        if validation and i % val_interval == 0:
+            loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = loss_by_chunk(batch_val)
+            scheduler_step(loss_val)
+            sys.stdout.write('\n')
+
+        loss, loss_v, loss_var, loss_p, loss_ewc = train_step(batch,i)
+
+        loss_ma = decay * loss_ma + ( 1 - decay ) * loss
+
+        sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i+1,iters,loss_ma,loss_val))
+        sys.stdout.flush()
+            
+        if save_loss and i % save_interval == 0:
+            _idx = i // save_interval
+            loss_history[_idx] = (loss, 
+                loss_v, 
+                loss_var,
+                loss_p,
+                loss_val,
+                loss_val_v,
+                loss_val_var,
+                loss_val_p,
+                loss_ewc)
 
 if ewc:
     m.compute_fisher(batch_train)
@@ -317,10 +377,11 @@ if ewc:
 sys.stdout.write('\n')
 sys.stdout.flush()
 
-if backend == 'tensorflow':
-    m.save(sess)
-elif backend == 'pytorch':
-    m.save()
+if not early_stopping:
+    if backend == 'tensorflow':
+        m.save(sess)
+    elif backend == 'pytorch':
+        m.save()
 
 
 if save_loss:
