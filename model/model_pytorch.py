@@ -2,6 +2,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.nn.utils as U
 import os
 import numpy as np
 import sys
@@ -25,54 +26,60 @@ class Net(torch.jit.ScriptModule):
         kernel_size = 3
         stride = 1
         filters = 32
+
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
         self.bn1 = nn.BatchNorm2d(filters)
         _shape = convOutShape((22,10), kernel_size, stride)
+
         self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
         self.bn2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
-       
-        flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc1 = 64
+        flat_in = _shape[0] * _shape[1] * filters
+ 
+        n_fc1 = 128
         self.fc1 = nn.Linear(flat_in, n_fc1)
         flat_out = n_fc1
         #flat_out = flat_in
- 
+
+        
         self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-
+        torch.nn.init.normal_(self.fc_var.weight, mean=0., std=.1)
 
     @torch.jit.script_method
     def forward(self, x):
-        #x = self.bn1(F.relu(self.conv1(x)))
-        x = F.relu(self.conv1(x))
-        #x = self.bn2(F.relu(self.conv2(x)))
-        x = F.relu(self.conv2(x))
+        x = self.bn1(F.relu(self.conv1(x)))
+        x = self.bn2(F.relu(self.conv2(x)))
+        #x = F.relu(self.conv1(x))
+        #x = F.relu(self.conv2(x))
         x = x.view(x.shape[0], -1)
-    
+
         x = F.relu(self.fc1(x))
-        
-        policy = F.softmax(self.fc_p(x), dim=1)
-        value = torch.exp(self.fc_v(x))
-        var = torch.exp(self.fc_var(x))
+
+        #policy = F.softmax(self.fc_p(x), dim=1)
+        policy = torch.ones((x.shape[0], 7)) / 7
+        value = self.fc_v(x)
+        var = F.softplus(self.fc_var(x))
         return value, var, policy
 
 def convert(x):
     return torch.from_numpy(x.astype(np.float32))
 
 class Model:
-    def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True):
+    def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True, use_variance=True, use_policy=False, loss_type='mae'):
 
         self.model = Net()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, amsgrad=True)
+        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+        #self.optimizer = optim.RMSprop(self.model.parameters(), lr=1e-3, eps=1)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95)
         self.scheduler = None
 
         self.v_mean = 0
         self.v_std = 1
 
-        self.var_mean = 3
+        self.var_mean = 0
         self.var_std = 1
 
         self.weighted_mse = weighted_mse
@@ -84,6 +91,14 @@ class Model:
 
         self.fisher = None
 
+        self.use_policy = use_policy
+        self.use_variance = use_variance
+
+        if loss_type == 'mae':
+            self.l_func = lambda x, y: torch.abs(x-y)
+        else:
+            self.l_func = lambda x, y: (x - y) ** 2
+
     def _loss(self, batch):
 
         state = torch.from_numpy(batch[0])
@@ -94,19 +109,27 @@ class Model:
         _v, _var, _p = self.model(state)
         if self.mle_gauss:
             weight = torch.from_numpy(batch[4])
-            loss = (weight * (torch.log(_var) + variance / _var + ((value - _v) ** 2 ) / _var)).mean()
+            loss = (weight * (torch.log(_var) + variance / _var + ((value - _v) ** 2 ) / _var - 1 - torch.log(variance))).mean()
             return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
         else:
             if self.weighted_mse:
                 weight = torch.from_numpy(batch[4])
-                loss_v = (weight * (_v - value) ** 2).mean()
+                loss_v = (weight * self.l_func(_v, value)).mean()
+                if self.use_variance:
+                    loss_var = (weight * self.l_func(_var, variance)).mean()
+                else:
+                    loss_var = torch.FloatTensor([0])
             else:
-                loss_v = F.mse_loss(_v, value)
-            #loss_v = Variable(torch.FloatTensor([0]))
-            #loss_var = F.mse_loss(_var, variance)
-            loss_var = Variable(torch.FloatTensor([0]))
-            #loss_p = F.kl_div(torch.log(_p),policy)
-            loss_p = Variable(torch.FloatTensor([0]))
+                loss_v = self.l_func(_v, value).mean()
+                if self.use_variance:
+                    loss_var = self.l_func(_var, variance).mean()
+                else:
+                    loss_var = torch.FloatTensor([0])
+
+            if self.use_policy:
+                loss_p = F.kl_div(torch.log(_p),policy)
+            else:
+                loss_p = torch.FloatTensor([0])
 
             loss = loss_v + loss_var + loss_p
             return loss, loss_v, loss_var, loss_p
@@ -152,6 +175,8 @@ class Model:
 
         l.backward()
 
+        U.clip_grad_norm_(self.model.parameters(), 1e5)
+      
         self.optimizer.step()
 
         result = [l.item() for l in losses]
@@ -186,8 +211,8 @@ class Model:
 
         state = convert(batch)
         
-        with torch.no_grad():
-            output = self.model(state)
+        #with torch.no_grad():
+        output = self.model(state)
 
         result = [o.data.numpy() for o in output]
         result[0] = result[0] * self.v_std + self.v_mean
@@ -204,8 +229,10 @@ class Model:
         with torch.no_grad():
             output = self.model(state)
 
+        result = [o.data.numpy() for o in output]
         v = np.random.normal(output[0], np.sqrt(output[1]))
-        return [v, output[1], output[2]]
+        result[0] = v
+        return result
 
 
     def update_scheduler(self,val_loss):
@@ -213,14 +240,16 @@ class Model:
         if self.scheduler:
             self.scheduler.step(val_loss)
 
-    def save(self):
+    def save(self, verbose=True):
 
-        sys.stdout.write('Saving model...\n')
-        sys.stdout.flush()
+        if verbose:
+            sys.stdout.write('Saving model...\n')
+            sys.stdout.flush()
 
         if not os.path.isdir(EXP_PATH):
-            sys.stdout.write('Export path does not exist, creating a new one...\n')
-            sys.stdout.flush()
+            if verbose:
+                sys.stdout.write('Export path does not exist, creating a new one...\n')
+                sys.stdout.flush()
             os.mkdir(EXP_PATH)
 
         filename = EXP_PATH + 'model_checkpoint'
