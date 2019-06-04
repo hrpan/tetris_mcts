@@ -86,7 +86,6 @@ class Agent:
 
         v, var, p = self.inference(state)
             
-
         return v[0][0], var[0][0], p[0]
 
     def expand_nodes(self,n_nodes=10000):
@@ -189,7 +188,7 @@ class Agent:
 
         self.occupied = list(_c)
         sys.stderr.write('Number of occupied nodes: ' + str(len(self.occupied)) + '\n')
-        self.available = list(set(range(self.max_nodes)) - _c)
+        self.available = [i for i in range(self.max_nodes) if i not in _c]
         sys.stderr.write('Number of available nodes: ' + str(len(self.available)) + '\n')
 
         if self.saver:
@@ -259,4 +258,4 @@ class Agent:
 
         if self.saver:
             self.save_occupied()
-        self.saver.close()
+            self.saver.close()
