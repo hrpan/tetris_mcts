@@ -426,6 +426,58 @@ def select_index_clt(index,child,node_stats):
     return np.array(trace, dtype=np.int32)
 
 @jit(nopython=True,cache=True)
+def select_index_correlated(index,child,node_stats):
+
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        _child_nodes = []
+        for i in range(n_actions):
+            if child[index][i] != 0:
+                _child_nodes.append(child[index][i])
+
+        _child_nodes = list(set(_child_nodes))
+
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
+            break
+
+        low_node = False
+
+        _stats = np.zeros((2, len_c), dtype=np.float32)
+
+        _n = node_stats[index][0]
+
+        for i in range(len_c):
+            _idx = _child_nodes[i]
+            if node_stats[_idx][0] <= 4 * np.log(_n):
+                index = _idx
+                low_node = True
+                break
+            _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
+            _stats[1][i] = node_stats[_idx][3] 
+
+        if low_node:
+            continue
+
+        _c = np.sqrt( _stats[1] ) * norm_quantile(_n)
+
+        _q = _stats[0]
+
+        _v = _q + _c 
+
+        _a = np.argmax(_v)
+
+        index = _child_nodes[_a]
+
+    return np.array(trace, dtype=np.int32)
+
+
+@jit(nopython=True,cache=True)
 def backup_trace_welford(trace,node_stats,value):
     """
     numerical stable sample variance calculation based on welford's online algorithm
@@ -445,5 +497,25 @@ def backup_trace_welford(trace,node_stats,value):
 
         node_stats[idx][3] += delta * delta2
         node_stats[idx][4] = max(v,node_stats[idx][4])
+
+@jit(nopython=True,cache=True)
+def backup_trace_welford_v2(trace,node_stats,value):
+    """
+    numerical stable sample variance calculation based on welford's online algorithm
+    [0]:count
+    [1]:mean
+    [3]:M2
+    """
+    for idx in trace:
+        v = value - node_stats[idx][2] 
+        if node_stats[idx][0] == 0:
+            node_stats[idx][1] = v
+        else:
+            delta = v - node_stats[idx][1]
+            node_stats[idx][1] += delta / (node_stats[idx][0] + 1)
+            delta2 = v - node_stats[idx][1]
+            node_stats[idx][3] = (node_stats[idx][3] * node_stats[idx][0] + delta * delta2) / (node_stats[idx][0] + 1)
+        node_stats[idx][0] += 1
+        node_stats[idx][4] = max(v, node_stats[idx][4])
 
 
