@@ -7,18 +7,20 @@ eps = 1e-7
 
 class ValueSimBayes(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, n_actions=7):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, min_n=2, n_actions=7):
 
         super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions)
 
         self.g_tmp = env(*env_args)
+
+        self.min_n = min_n
 
     def mcts(self,root_index):
 
         _child = self.arrs['child']
         _node_stats = self.arrs['node_stats']
 
-        trace = select_index_bayes(root_index, _child, _node_stats)
+        trace = select_index_bayes(root_index, _child, _node_stats, self.min_n)
 
         leaf_index = trace[-1]
 
@@ -78,7 +80,3 @@ class ValueSimBayes(Agent):
 
         return _ns[1], _ns[3] / _ns[0] 
 
-    def update_root(self, game):
-        
-        self.root = self.new_node(game)
-        self.arrs['node_stats'][self.root][2] = game.getScore()
