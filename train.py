@@ -271,7 +271,6 @@ TRAINING ITERATION
 """
 loss_ma = 0
 decay = 0.99
-loss_val, loss_val_v, loss_val_var, loss_val_p = 0, 0, 0, 0
 
 def loss_by_chunk(batch, chunksize=1000):
     loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = 0, 0, 0, 0, 0
@@ -329,7 +328,7 @@ if early_stopping:
             loss_val_best = loss_val[0]
             _p = 0  
             m.save(verbose=False)
-            suffix = ' (Current best model) '
+            suffix = ' <----- current model '
         else:
             _p += 1
             suffix = ''
@@ -342,34 +341,27 @@ if early_stopping:
 
     loss_history = np.array(loss_history)
 else:
+    loss_val = [0] * 5
     for i in range(iters):
         idx = np.random.randint(n_data,size=batch_size)
 
         batch = [_arr[idx] for _arr in batch_train]
         
         if validation and i % val_interval == 0:
-            loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = loss_by_chunk(batch_val)
-            scheduler_step(loss_val)
+            loss_val = loss_by_chunk(batch_val)
+            scheduler_step(loss_val[0])
             sys.stdout.write('\n')
 
-        loss, loss_v, loss_var, loss_p, loss_ewc = train_step(batch,i)
+        loss = train_step(batch,i)
 
-        loss_ma = decay * loss_ma + ( 1 - decay ) * loss
+        loss_ma = decay * loss_ma + ( 1 - decay ) * loss[0]
 
-        sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i+1,iters,loss_ma,loss_val))
+        sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i+1,iters,loss_ma,loss_val[0]))
         sys.stdout.flush()
             
         if save_loss and i % save_interval == 0:
             _idx = i // save_interval
-            loss_history[_idx] = (loss, 
-                loss_v, 
-                loss_var,
-                loss_p,
-                loss_val,
-                loss_val_v,
-                loss_val_var,
-                loss_val_p,
-                loss_ewc)
+            loss_history[_idx] = (*loss[:4], *loss_val) 
 
 if ewc:
     m.compute_fisher(batch_train)
