@@ -3,11 +3,11 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils as U
-import os
+import torch.onnx
+import onnx
+import os, sys, subprocess
 import numpy as np
-import sys
-import gc
-from torch.autograd import Variable
+from caffe2.python import workspace
 
 IMG_H, IMG_W, IMG_C = (22,10,1)
 
@@ -18,7 +18,7 @@ n_actions = 7
 def convOutShape(shape_in,kernel_size,stride):
     return ((shape_in[0] - kernel_size) // stride + 1, (shape_in[1] - kernel_size) // stride + 1 )
 
-class Net(torch.jit.ScriptModule):
+class Net(nn.Module):
 
     def __init__(self):
         super(Net,self).__init__()
@@ -48,7 +48,6 @@ class Net(torch.jit.ScriptModule):
         self.fc_var = nn.Linear(flat_out, 1)
         torch.nn.init.normal_(self.fc_var.weight, mean=0., std=.1)
 
-    @torch.jit.script_method
     def forward(self, x):
         x = self.bn1(F.relu(self.conv1(x)))
         x = self.bn2(F.relu(self.conv2(x)))
@@ -61,19 +60,23 @@ class Net(torch.jit.ScriptModule):
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
         value = self.fc_v(x)
-        var = F.softplus(self.fc_var(x))
+#        var = F.softplus(self.fc_var(x))
+        var = F.elu(self.fc_var(x)) + 1
         return value, var, policy
 
 def convert(x):
     return torch.from_numpy(x.astype(np.float32))
 
 class Model:
-    def __init__(self, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True, use_variance=True, use_policy=False, loss_type='mae'):
+    def __init__(self, training=False, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True, use_variance=True, use_policy=False, loss_type='mae'):
+
+        self.training = training
 
         self.model = Net()
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3)
+        
+        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-5)
         #self.optimizer = optim.RMSprop(self.model.parameters(), lr=1e-3, eps=1)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-5, momentum=0.9, nesterov=True)
         self.scheduler = None
 
         self.v_mean = 0
@@ -175,7 +178,7 @@ class Model:
 
         l.backward()
 
-        U.clip_grad_norm_(self.model.parameters(), 1e5)
+        #U.clip_grad_norm_(self.model.parameters(), 1e3)
       
         self.optimizer.step()
 
@@ -207,16 +210,7 @@ class Model:
     
     def inference(self,batch):
 
-        self.model.eval()
-
-        state = convert(batch)
-        
-        #with torch.no_grad():
-        output = self.model(state)
-
-        result = [o.data.numpy() for o in output]
-        result[0] = result[0] * self.v_std + self.v_mean
-        result[1] = result[1] * self.var_std + self.var_mean
+        result = self.model_caffe.run([batch.astype(np.float32))
 
         return result
 
@@ -265,6 +259,26 @@ class Model:
                 }
         torch.save(full_state, filename)
 
+        self.save_onnx()
+
+    def save_onnx(self, verbose=False):
+
+        dummy = torch.ones((1, 1, 22, 10))
+        
+        if not os.path.isdir(EXP_PATH):
+            if verbose:
+                sys.stdout.write('Export path does not exist, creating a new one...\n')
+                sys.stdout.flush()
+            os.mkdir(EXP_PATH)
+
+        torch.onnx.export(self.model, dummy, EXP_PATH + 'model.onnx')
+
+        output_arg = '-o ' + EXP_PATH + 'pred.pb'
+        init_arg = '--init-net-output ' + EXP_PATH + 'init.pb'
+        file_arg = EXP_PATH + 'model.onnx'
+
+        subprocess.run('convert-onnx-to-caffe2' + ' ' + output_arg + ' ' + init_arg + ' ' + file_arg, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
     def load(self):
 
         filename = EXP_PATH + 'model_checkpoint'
@@ -285,3 +299,23 @@ class Model:
         else:
             sys.stdout.write('Checkpoint not found, using default model\n')
             sys.stdout.flush()
+
+        if not self.training:
+            self.load_onnx()
+
+    def load_onnx(self):
+        
+        init_filename = EXP_PATH + 'init.pb'
+        pred_filename = EXP_PATH + 'pred.pb'
+
+        if not (os.path.isfile(init_filename) or os.path.isfile(pred_filename)):
+            self.save_onnx()
+
+        with open(init_filename, mode='r+b') as f:
+            init_net = f.read()
+
+        with open(pred_filename, mode='r+b') as f:
+            pred_net = f.read()
+
+        self.model_caffe = workspace.Predictor(init_net, pred_net)
+
