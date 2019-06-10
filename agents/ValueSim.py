@@ -7,7 +7,7 @@ eps = 1e-7
 
 class ValueSim(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.05, n_actions=7):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.01, n_actions=7):
 
         super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions)
 
@@ -44,7 +44,8 @@ class ValueSim(Agent):
                 _child[leaf_index][i] = _n
                 _node_stats[_n][2] = _g.getScore()
 
-        backup_trace_3(trace, _node_stats, value, alpha=self.backup_alpha)
+        #backup_trace_3(trace, _node_stats, value, alpha=self.backup_alpha)
+        backup_trace_welford_v2(trace, _node_stats, value)
 
     def compute_stats(self, node=None):
 
@@ -82,7 +83,3 @@ class ValueSim(Agent):
 
         return _ns[1], _ns[3] 
 
-    def update_root(self, game):
-        
-        self.root = self.new_node(game)
-        self.arrs['node_stats'][self.root][2] = game.getScore()
