@@ -86,6 +86,10 @@ if last_nfiles > 0:
     list_of_data = list_of_data[-last_nfiles:]
 
 if len(list_of_data) == 0:
+    from model.model_pytorch import Model
+    m = Model(training=True, weighted_mse=weighted_mse, ewc=ewc, ewc_lambda=ewc_lambda)
+    m.load()
+    m.save()
     exit()
 
 loader = DataLoader(list_of_data)    
@@ -222,7 +226,7 @@ MODEL SETUP
 
 if backend == 'pytorch':
     from model.model_pytorch import Model
-    m = Model(weighted_mse=weighted_mse, ewc=ewc, ewc_lambda=ewc_lambda)
+    m = Model(training=True, weighted_mse=weighted_mse, ewc=ewc, ewc_lambda=ewc_lambda)
     if not new:
         m.load()
     train_step = lambda batch, step: m.train(batch)
