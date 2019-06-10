@@ -94,7 +94,9 @@ def get_all_childs(index,child):
     while i < len(to_traverse):
         idx = to_traverse[i]
         if idx not in traversed:
-            to_traverse += list(child[idx])   
+            for c in child[idx]:
+                if c not in traversed:
+                    to_traverse.append(c)
             traversed.append(idx)
         i += 1
     return set(to_traverse)
@@ -382,11 +384,7 @@ def select_index_clt(index,child,node_stats):
 
         trace.append(index)
 
-        _child_nodes = []
-        for i in range(n_actions):
-            if child[index][i] != 0:
-                _child_nodes.append(child[index][i])
-
+        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
         _child_nodes = list(set(_child_nodes))
 
         len_c = len(_child_nodes)
