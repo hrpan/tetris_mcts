@@ -210,7 +210,7 @@ class Model:
     
     def inference(self,batch):
 
-        result = self.model_caffe.run([batch.astype(np.float32))
+        result = self.model_caffe.run([batch.astype(np.float32)])
 
         return result
 
