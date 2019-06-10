@@ -2,7 +2,8 @@ import numpy as np
 import sys
 #sys.path.append('./model')
 from agents.core import get_all_childs
-
+from collections import deque
+import numba
 class Agent:
 
     def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7, saver=None, stochastic_inference=False, min_visits=30):
@@ -43,8 +44,8 @@ class Agent:
 
         self.game_arr = [self.env(*self.env_args) for i in range(self.init_nodes)]
 
-        self.available = [i for i in range(1,self.init_nodes)]
-        self.occupied = [0]
+        self.available = deque(range(1, self.init_nodes), maxlen=self.init_nodes)
+        self.occupied = deque([0], maxlen=self.init_nodes)
 
         self.node_index_dict = dict()
 
@@ -85,7 +86,7 @@ class Agent:
     def evaluate_state(self,state):
 
         v, var, p = self.inference(state)
-            
+
         return v[0][0], var[0][0], p[0]
 
     def expand_nodes(self,n_nodes=10000):
@@ -185,11 +186,15 @@ class Agent:
         sys.stderr.write('\nWARNING: REMOVING UNUSED NODES...\n')
 
         _c = get_all_childs(self.root,self.arrs['child'])
-
-        self.occupied = list(_c)
+        self.occupied.clear()
+        self.occupied.extend(_c)
+        a_app = self.available.append
+        for i in range(self.max_nodes): 
+            if i not in _c:
+                a_app(i)
         sys.stderr.write('Number of occupied nodes: ' + str(len(self.occupied)) + '\n')
-        self.available = [i for i in range(self.max_nodes) if i not in _c]
         sys.stderr.write('Number of available nodes: ' + str(len(self.available)) + '\n')
+        sys.stderr.flush()
 
         if self.saver:
             self.save_nodes(self.available)
@@ -199,11 +204,9 @@ class Agent:
 
             del self.node_index_dict[_g]
 
-            #self.game_arr[idx] = None
-
-            self.arrs['child'][idx] = 0
-            self.arrs['child_stats'][idx] = 0
-            self.arrs['node_stats'][idx] = 0
+            self.arrs['child'][idx].fill(0)
+            self.arrs['child_stats'][idx].fill(0)
+            self.arrs['node_stats'][idx].fill(0)
 
     def save_nodes(self, nodes_to_save):
 
