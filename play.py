@@ -1,8 +1,6 @@
 from os.path import dirname
-import os
-import sys
+import os, sys
 sys.path.append('../../pyTetris')
-#from pyTetris import Tetris
 from nbTetris import Tetris
 import numpy as np
 import argparse
