@@ -147,12 +147,17 @@ else:
     weights = np.ones(values.shape)
 
 if backend == 'pytorch':
-    states = np.expand_dims(loader.board, 1).astype(np.float32)
-    policy = loader.policy.astype(np.float32)
-    values = np.expand_dims(values, -1).astype(np.float32)
-    variance = np.expand_dims(variance, -1).astype(np.float32)
-    weights = np.expand_dims(weights, -1).astype(np.float32)
+    states = loader.board
+    policy = loader.policy
+    def gen_batch(idx):
+        return (np.expand_dims(states[idx], 1).astype(np.float32, copy=False), 
+            np.expand_dims(values[idx], -1).astype(np.float32, copy=False),
+            np.expand_dims(variance[idx], -1).astype(np.float32, copy=False),
+            policy[idx].astype(np.float32, copy=False), 
+            np.expand_dims(weights[idx], -1).astype(np.float32, copy=False))
+                
 elif backend == 'tensorflow':
+    raise Exception('Tensorflow not supported anymore, switch to pytorch instead')
     states = np.expand_dims(np.stack(loader['board'].values),-1)
     policy = loader.policy
     values = np.expand_dims(values,-1)
@@ -162,6 +167,7 @@ elif backend == 'tensorflow':
 Shuffle
 """
 if shuffle:
+    raise Exception('Deprecated')
     indices = np.random.permutation(len(states))
 
     states = states[indices]
@@ -193,23 +199,22 @@ if validation:
             t_idx = list(range(len(states)))
             v_idx = []
         else:
-            v_idx = np.where(loader.episode < val_episodes + 1)
+            v_idx = np.where(loader.episode < val_episodes + 1)[0]
             if val_set_size_max > 0:
-                idx = np.random.choice(len(v_idx[0]), size=min(len(v_idx[0]), val_set_size_max), replace=False)
-                v_idx = (v_idx[0][idx],)
-            t_idx = np.where(loader.episode >= val_episodes + 1)
-
-    batch_val = [states[v_idx], values[v_idx], variance[v_idx], policy[v_idx], weights[v_idx]]
-
-    batch_train = [states[t_idx], values[t_idx], variance[t_idx], policy[t_idx], weights[t_idx]]
+                idx = np.random.choice(v_idx[0], size=min(len(v_idx[0]), val_set_size_max), replace=False)
+                v_idx = v_idx[0][idx]
+            t_idx = np.where(loader.episode >= val_episodes + 1)[0]
 else:
-    batch_train = [states, values, variance, policy, weights]
-n_data = len(batch_train[0])
+    t_idx = list(range(len(states)))
+
+n_data = len(t_idx)
+
 #=========================
 """
 TARGET NORMALIZATION
 """
 if target_normalization:
+    raise Exception('Deprecated')
     v_mean = batch_train[1].mean()
     v_std = batch_train[1].std()
     var_mean = batch_train[2].mean()
@@ -276,27 +281,25 @@ TRAINING ITERATION
 loss_ma = 0
 decay = 0.99
 
-def loss_by_chunk(batch, chunksize=1000):
-    loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc = 0, 0, 0, 0, 0
+def loss_by_chunk(idx, chunksize=1000):
+    loss = [0] * 5
     val_idx = 0
-    length = len(batch[0])
+    length = len(idx)
     while val_idx < length:
         if val_idx + chunksize < length:
-            b_val = [_arr[val_idx:val_idx+chunksize] for _arr in batch] 
+            idx_s = idx[val_idx:val_idx+chunksize]
         else:
-            b_val = [_arr[val_idx:] for _arr in batch]
-        _l_val, _l_val_v, _l_val_var, _l_val_p, _l_ewc = compute_loss(b_val)
-        loss_val += len(b_val[0]) * _l_val / length
-        loss_val_v += len(b_val[0]) * _l_val_v / length
-        loss_val_var += len(b_val[0]) * _l_val_var / length
-        loss_val_p += len(b_val[0]) * _l_val_p / length
-        loss_ewc += len(b_val[0]) * _l_ewc / length
+            idx_s = idx[val_idx:]
+        b_val = gen_batch(idx_s)
+        _loss = compute_loss(b_val)
+        for i in range(5):
+            loss[i] += len(b_val[0]) * _loss[i] / length
         val_idx += chunksize
-    return loss_val, loss_val_v, loss_val_var, loss_val_p, loss_ewc
+    return loss
 
 if early_stopping:
-    if not validation or len(batch_val[0]) == 0:
-        raise Exception('Early stopping without validation')
+    if not validation or len(v_idx) == 0:
+        raise Exception('Early stopping without validation?')
 
     loss_val_best = 1e10
 
@@ -312,11 +315,9 @@ if early_stopping:
         loss_avg = [0, 0, 0, 0, 0]
 
         for i in range(iters_per_epoch):
-
-            idx = np.random.randint(n_data, size=batch_size)
-
-            batch = [_arr[idx] for _arr in batch_train]
             
+            batch = gen_batch(np.random.choice(t_idx, size=batch_size))
+                
             _loss = train_step(batch, i)
 
             for j in range(5):
@@ -326,7 +327,7 @@ if early_stopping:
 
         _epoch += 1
 
-        loss_val = loss_by_chunk(batch_val)
+        loss_val = loss_by_chunk(v_idx)
 
         if loss_val[0] < loss_val_best:
             loss_val_best = loss_val[0]
@@ -347,12 +348,11 @@ if early_stopping:
 else:
     loss_val = [0] * 5
     for i in range(iters):
-        idx = np.random.randint(n_data,size=batch_size)
 
-        batch = [_arr[idx] for _arr in batch_train]
-        
+        batch = gen_batch(np.random.choice(t_idx, size=batch_size))
+
         if validation and i % val_interval == 0:
-            loss_val = loss_by_chunk(batch_val)
+            loss_val = loss_by_chunk(v_idx)
             scheduler_step(loss_val[0])
             sys.stdout.write('\n')
 
