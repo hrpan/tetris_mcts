@@ -74,9 +74,7 @@ class Model:
 
         self.model = Net()
         
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-5)
-        #self.optimizer = optim.RMSprop(self.model.parameters(), lr=1e-3, eps=1)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-5, momentum=0.9, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-3)
         self.scheduler = None
 
         self.v_mean = 0
