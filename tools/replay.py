@@ -168,11 +168,11 @@ if __name__ == '__main__':
     current_combo_label.pack()
     def update_info_frame(index):
         global data
-        current_index_label.config(text='Current Index: %d'%index)
-        current_cycle_label.config(text='Current Cycle: %d'%data.getCycle(index))
-        current_score_label.config(text='Current Score: %d'%data.getScore(index))
-        current_lines_label.config(text='Current Lines: %d'%data.getLines(index))
-        current_combo_label.config(text='Current Combo: %d'%data.getCombo(index))
+        current_index_label.config(text='Current Index: %10d'%index)
+        current_cycle_label.config(text='Current Cycle: %10d'%data.getCycle(index))
+        current_score_label.config(text='Current Score: %10d'%data.getScore(index))
+        current_lines_label.config(text='Current Lines: %10d'%data.getLines(index))
+        current_combo_label.config(text='Current Combo: %10d'%data.getCombo(index))
     list_of_updates.append(update_info_frame)
 
     def next_index():
