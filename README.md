@@ -6,6 +6,60 @@ See the agent in action [here](https://www.youtube.com/watch?v=EALo2GfZuYU)!
 
 (Warning: Codes are a hot mess riddled with inconsistent styles and unclear namings, read them at your own risk.)
 
+## Major update
+
+See the evolution of the new agent [here](https://www.youtube.com/watch?v=v-p-36f5YMw)!
+
+It's been some time since I last updated this page but I'll try to summarize the major changes here and show the latest results.
+
+### Environment
+1. Switch the scores from number of line clears to the raw scores from [Tetris score guideline](https://tetris.wiki/Scoring) (assuming level 1, ignoring T-Spin related ones because I'm too lazy to implement the rotation system).
+2. Add hard-drop action so the agent can possibly plan further ahead (although it doesn't seem like the case)
+
+### Agent
+1. Instead of using exponential moving averages, the mean and variance are now calculated using the [Welford's algorithm](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford%27s_online_algorithm) with initial values inferred from the network (seemed more stable?)
+2. Instead of using two MSE losses for the value and variance training, the [Gaussian likelihood](https://en.wikipedia.org/wiki/Normal_distribution#Estimation_of_parameters) is now used as the loss function which, in my opinion, is much more reasonable probabilistically (also, we don't have to balance the weights between the two MSE losses now) 
+3. Instead of training only the actual played states, the agent is now trained with (almost) all of the traversed states during the tree search which significantly improved the performance of the agent
+4. Added early stopping to automate the training phase instead of some random number of epochs
+
+### Latest results
+The results shown here were trained using the default routine written in `cycle.sh`. In each cycle (or iteration, if you prefer), the agent plays 50 normal games with 500 simulations per move (SPM) and 1 benchmark game with 1000 SPM. 
+During the training phase, 5 episodes from the normal plays were kept as validation set and the other episodes were used for actual training. Here is an example of the loss curve
+<p align="center">
+    <img src="./results/v2/loss_curve.png" width=600> 
+</p>
+<p align="center">
+    <em> Loss curves with a bunch of unused labels </em>
+</p>
+where the y-axis (in log-scale) shows the loss and the x-axis shows the number of epochs. The spikes are caused by the differences between datasets. Interestingly, in later cycles, the agent seemed to start overfitting like crazy even with very few (usually 1) epochs despite that I'm using a rather simple network (two 3x3x32-conv2d and one 128-linear layers), which might suggest that we can try an even smaller model?
+
+Next up, we have the scores of the normal and benchmark plays.
+
+<p align="center">
+    <img src="./results/v2/score_normal.png" width=400> <img src="./results/v2/score_bench.png" width=400>
+</p>
+<p align="center">
+    <em> Average and standard deviation of scores and line clears at each iteration. Left/Right: normal/benchmark. 
+Unsurprisingly, both curves (blue/red) match pretty well with each other (after all, you need to clear lines to score). </em>
+</p>
+
+The thing I want to point out here is that, despite using a more noisy target, the raw scores, the new agent managed to achieve an average number of line clear about 1k at cycle 15 (750 games), which is about ***100 times better than the previous agent*** (although the simulations per move is slightly higher compared to the previous one (300->500)). 
+Also, after the initial exponential growing phase around iteration 4 to 12, the agent seemed to be growing at an even faster rate after the 13th iteration. Unfortunately, my potato only has 8GB RAM and the agent was generating more data than my RAM can fit, so I had to terminate it there. 
+(In theory I could modify the codes to train on larger-than-RAM datasets, but <del>I'm too lazy</del> if the agent continued to grow super-exponentially the problem will probably be larger-than-HDD datasets, which I don't have a solution, in the next few iterations so I will have to terminate it anyway.) 
+
+Finally, I have the [entropy](https://en.wikipedia.org/wiki/Entropy_(information_theory)) of the MCTS policies here
+<p align="center">
+    <img src="./results/v2/entropy_normal.png" width=400> <img src="./results/v2/entropy_bench.png" width=400>
+</p>
+<p align="center">
+    <em> Averaged entropy of the MCTS policies in each iteration. L/R: normal/benchmark. Red line: Maximum entropy with 7 actions. </em>
+</p>
+
+As expected, benchmark plays tend to have lower entropy because UCT would converge to the optimal action, so larger SPM implies lower entropy.
+Interestingly, the agent did not really explored the environment until the 4th iteration where both the entropy and the number of line clears increased significantly.
+
+That's the update for you, hope you enjoyed it!
+
 ## Introduction
 
 This project started out as a practice to apply Deep Q-Learning to Tetris, one of my favourite puzzle games of all time. 
@@ -15,30 +69,34 @@ line!). It was also around that time AlphaGo beat Lee Sedol in a dominating fash
 I believed that a model based approach should improve significantly compared to model free approaches (Q learning, policy gradients etc.). So here it is, the MCTS-TD agent inspired by AlphaGo specializing in the game Tetris.
 
 ## How is this related to AlphaGO/Zero?
-At the core of AlphaGo, the agent tries to search the game tree base on upper confidence bound applied to trees (UCT). Unlike vanilla MCTS which has to simulate the entire game to estimate the value of current state, AlphaGo uses a neural network to inference the value (winning probability) and the policy (likely next moves) of the current state to calculate the upper confidence bound for each moves. In my agent I used exponential moving averages and variances with initial values from the neural network to calculate the upper confidence bound based on central limit theorem which I believe is more appropriate for single player games with unbounded rewards. Another difference is that AlphaGo uses the final scores of each game as the training targets while this agent uses a bootstrapped target, hence Temporal Difference Learning.
+At the core of AlphaGo, the agent tries to search the game tree base on upper confidence bound applied to trees (UCT). Unlike vanilla MCTS which has to simulate the entire game to estimate the value of the current state, AlphaGo uses a neural network to inference the value (winning probability) and the policy (likely next moves) of the current state to calculate the upper confidence bound for each move. In my agent, I used exponential moving averages and variances with initial values from the neural network to calculate the upper confidence bound based on central limit theorem which I believe is more appropriate for single player games with unbounded rewards. Another difference is that AlphaGo uses the final scores of each game as the training targets while this agent uses a bootstrapped target, hence Temporal Difference Learning.
 
 ## How is this different from other Tetris Bots?
-Most of the super-human performing Tetris bots seen on youtube or other games use heuristics (number of holes, height of each column, smoothness of the surface etc.) to model the reward. Using heuristics can substantially simplify the problem since the rewards are now much denser (you get a reward for each piece you drop) and are highly correlated with the final score. However, such handcrafted rewards can bias your agents toward the target you set (minimize holes in the board or height of the column) instead of the true target (clearing lines). Furthermore, such heuristics do not generalize beyond the game Tetris meaning that you have to handcraft rewards for each game you want your bot to play. This agent differs from those bots in the sense that it can be applied to any environment satisfying certain requirements.
+Most of the super-human performing Tetris bots seen on youtube or other games use heuristics (number of holes, height of each column, smoothness of the surface etc.) to model the reward. Using heuristics can substantially simplify the problem since the rewards are now much denser (you get a reward for each piece you drop or each action you did) and are highly correlated with the final score. 
+However, such handcrafted rewards can bias your agents toward the target you set (e.g. minimize holes in the board or height of the column) instead of the true target (clearing lines). Furthermore, such heuristics do not generalize beyond the game Tetris meaning that you have to handcraft rewards for each game you want your bot to play. This agent differs from those bots in the sense that it can be applied to any environment satisfying certain requirements.
 
 ## Prerequisite
 
-* torch==1.0.0 
-* numpy==1.14.2
-* numba==0.39.0
-* tables==3.4.2
-* matplotlib==2.1.2
-* tensorflow==1.12.0 (not supported anymore, switch to PyTorch instead)
+* tables==3.4.4
+* torch==1.1.0
+* matplotlib==2.2.2
+* onnx==1.5.0
+* numpy==1.16.4
+* numba==0.43.1
+* caffe2==0.8.1
+* tensorflow==1.14.0 (not supported anymore, use PyTorch and caffe2)
 
 You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris)
 and modify the `sys.path.append` in `play.py` to include the path of pyTetris.
 
 ## How to run it?
 
-* `play.py` script for agent play or manual play
-* `train.py` script for training the neural network
-* `tools/plot_score.py` script for plotting the score curve
-* `tools/plot_loss.py` script for plotting the loss curve
-* `tools/replay.py` GUI for replaying
+* `play.py` script for agent play or manual play <br> (e.g. `python play.py --selfplay --agent_type ValueSim`)
+* `train.py` script for training the neural network <br> (e.g. `python train.py --data_paths data/self1/data1`)
+* `tools/plot_score.py` script for plotting the score curve <br> (e.g. `python tools/plot_score.py --data_paths data/self1/data*`)
+* `tools/plot_score.py` script for plotting the entropy curve <br> (e.g. `python tools/plot_entropy.py --data_paths data/self1/data*`)
+* `tools/plot_loss.py` script for plotting the loss curve <br> (e.g. `python tools/plot_loss.py data/loss`)
+* `tools/replay.py` GUI for replaying <br> (e.g. `python tools/replay.py --data_paths data/self1/data1`)
 
 The default routine is written in `cycle.sh`, if you are unsure what to do simply use `./cycle.sh` and things should get going.
 
