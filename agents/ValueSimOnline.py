@@ -98,7 +98,6 @@ class ValueSimOnline(Agent):
         for i in range(self.max_nodes): 
             if i not in _c:
                 a_app(i)
-        print(self.available[0])
         sys.stderr.write('Number of occupied nodes: ' + str(len(self.occupied)) + '\n')
         sys.stderr.write('Number of available nodes: ' + str(len(self.available)) + '\n')
         sys.stderr.flush()
