@@ -188,6 +188,7 @@ class Agent:
         _c = get_all_childs(self.root,self.arrs['child'])
         self.occupied.clear()
         self.occupied.extend(_c)
+        self.available.clear()
         a_app = self.available.append
         for i in range(self.max_nodes): 
             if i not in _c:

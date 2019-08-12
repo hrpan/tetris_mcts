@@ -93,10 +93,12 @@ class ValueSimOnline(Agent):
         _c = get_all_childs(self.root,self.arrs['child'])
         self.occupied.clear()
         self.occupied.extend(_c)
+        self.available.clear()
         a_app = self.available.append
         for i in range(self.max_nodes): 
             if i not in _c:
                 a_app(i)
+        print(self.available[0])
         sys.stderr.write('Number of occupied nodes: ' + str(len(self.occupied)) + '\n')
         sys.stderr.write('Number of available nodes: ' + str(len(self.available)) + '\n')
         sys.stderr.flush()
@@ -114,7 +116,7 @@ class ValueSimOnline(Agent):
             self.arrs['node_stats'][idx].fill(0)
 
 
-    def train_nodes(self, nodes, batch_size=64, epochs=100, min_visits=5):
+    def train_nodes(self, nodes, batch_size=128, epochs=100, min_visits=5):
 
         sys.stderr.write('Training unused nodes...\n')
         sys.stderr.flush()
