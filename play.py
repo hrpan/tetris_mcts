@@ -46,6 +46,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--agent_type', default='Vanilla', type=str, help='Which agent to use')
 parser.add_argument('--app', default=1, type=int, help='Actions-per-drop')
 parser.add_argument('--cycle', default=0, type=int, help='Number of cycle')
+parser.add_argument('--endless', default=False, help='Endless plays', action='store_true')
 parser.add_argument('--gamma', default=0.9, type=float, help='Discount factor')
 parser.add_argument('--interactive', default=False, help='Text interactive interface', action='store_true')
 parser.add_argument('--mcts_const', default=5.0, type=float, help='PUCT constant')
@@ -62,6 +63,7 @@ args = parser.parse_args()
 agent_type = args.agent_type
 app = args.app
 cycle = args.cycle
+endless = args.endless
 gamma = args.gamma
 interactive = args.interactive
 mcts_sims = args.mcts_sims
@@ -79,6 +81,9 @@ SOME INITS
 """
 env_args = ((22,10), app)
 game = Tetris(*env_args)
+
+if endless:
+    ngames = 0
 
 if selfplay:
     _agent_module = import_module('agents.'+agent_type)
@@ -124,6 +129,13 @@ while True:
                 game.reset()
             else:
                 break
+        elif endless:
+            ngames += 1
+            print('Episode: %3d Score: %10d Lines Cleared: %10d'%(ngames, game.getScore(), game.getLines()))
+            game.reset()
+            agent.update_root(game, ngames)
+            if ngames < 5:
+                agent.remove_nodes()
         else:
             ngames -= 1
 
