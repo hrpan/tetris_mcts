@@ -68,13 +68,23 @@ def convert(x):
     return torch.from_numpy(x.astype(np.float32))
 
 class Model:
-    def __init__(self, training=False, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True, use_variance=True, use_policy=False, loss_type='mae'):
+    def __init__(self, training=False, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True, use_variance=True, use_policy=False, loss_type='mae', use_onnx=False, use_cuda=True):
+
+        self.use_cuda = use_cuda
+
+        if torch.cuda.is_available() and self.use_cuda:
+            self.device = torch.device('cuda')
+        else:
+            self.device = torch.device('cpu')
+
 
         self.training = training
 
         self.model = Net()
-        
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3)
+        if self.use_cuda:
+            self.model = self.model.cuda()        
+        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9)
         self.scheduler = None
 
         self.v_mean = 0
@@ -100,21 +110,29 @@ class Model:
         else:
             self.l_func = lambda x, y: (x - y) ** 2
 
+        self.use_onnx = use_onnx
+
     def _loss(self, batch):
 
         state = torch.from_numpy(batch[0])
         value = torch.from_numpy(batch[1])
         variance = torch.from_numpy(batch[2])
         policy = torch.from_numpy(batch[3])
-        
+        weight = torch.from_numpy(batch[4])
+
+        if self.use_cuda:
+            state = state.cuda()
+            value = value.cuda()
+            variance = variance.cuda()
+            policy = policy.cuda()
+            weight = weight.cuda()
+
         _v, _var, _p = self.model(state)
         if self.mle_gauss:
-            weight = torch.from_numpy(batch[4])
             loss = (weight * (torch.log(_var) + variance / _var + ((value - _v) ** 2 ) / _var - 1 - torch.log(variance))).mean()
             return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
         else:
             if self.weighted_mse:
-                weight = torch.from_numpy(batch[4])
                 loss_v = (weight * self.l_func(_v, value)).mean()
                 if self.use_variance:
                     loss_var = (weight * self.l_func(_var, variance)).mean()
@@ -176,7 +194,7 @@ class Model:
 
         l.backward()
 
-        U.clip_grad_norm_(self.model.parameters(), 1e1)
+        #U.clip_grad_norm_(self.model.parameters(), 1e1)
       
         self.optimizer.step()
 
@@ -214,7 +232,17 @@ class Model:
     
     def inference(self,batch):
 
-        result = self.model_caffe.run([batch.astype(np.float32)])
+        self.model.eval() 
+
+        b = torch.from_numpy(batch).float()
+        if self.use_cuda:
+            b = b.cuda()
+
+        with torch.no_grad():
+            output = self.model(b)
+
+        result = [o.cpu().numpy() for o in output]
+        #result = self.model_caffe.run([batch.astype(np.float32)])
 
         return result
 
@@ -263,7 +291,8 @@ class Model:
                 }
         torch.save(full_state, filename)
 
-        self.save_onnx()
+        if self.use_onnx:
+            self.save_onnx()
 
     def save_onnx(self, verbose=False):
 
@@ -303,7 +332,7 @@ class Model:
             sys.stdout.write('Checkpoint not found, using default model\n')
             sys.stdout.flush()
 
-        if not self.training:
+        if not self.training and self.use_onnx:
             self.load_onnx()
 
     def load_onnx(self):
