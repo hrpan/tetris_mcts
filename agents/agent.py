@@ -202,7 +202,7 @@ class Agent:
         for idx in self.available:
             _g = self.game_arr[idx]
 
-            del self.node_index_dict[_g]
+            self.node_index_dict.pop(_g, None)
 
             self.arrs['child'][idx].fill(0)
             self.arrs['child_stats'][idx].fill(0)
