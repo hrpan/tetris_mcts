@@ -74,7 +74,7 @@ class Model:
 
         self.model = Net()
         
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-3)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3)
         self.scheduler = None
 
         self.v_mean = 0
@@ -140,7 +140,7 @@ class Model:
         if self.fisher:
             ewc_loss = torch.tensor([0.], dtype=torch.float32, requires_grad=True)
             for i, p in enumerate(self.model.parameters()):
-                ewc_loss = ewc_loss + self.ewc_lambda * torch.sum(self.fisher[i] * (p - self.p0[i]) ** 2)
+                ewc_loss = ewc_loss + 0.5 * self.ewc_lambda * torch.sum(self.fisher[i] * (p - self.p0[i]) ** 2)
             return ewc_loss
         else:
             return torch.tensor([0.], dtype=torch.float32, requires_grad=True)
@@ -176,14 +176,15 @@ class Model:
 
         l.backward()
 
-        #U.clip_grad_norm_(self.model.parameters(), 1e3)
+        U.clip_grad_norm_(self.model.parameters(), 1e1)
       
         self.optimizer.step()
 
         result = [l.item() for l in losses]
 
         if self.ewc:
-            result.append(self.compute_ewc_loss().item())
+            result.append(ewc_loss.item())
+            result[0] += ewc_loss.item()
         else:
             result.append(0)
 
@@ -195,15 +196,20 @@ class Model:
         
         fisher = [torch.zeros(p.data.shape) for p in self.model.parameters()]
 
-        self.optimizer.zero_grad()
+        for i in range(len(batch[0])):
 
-        losses = self._loss(batch)
+            self.optimizer.zero_grad()
 
-        losses[0].backward()
-        for i, p in enumerate(self.model.parameters()):
-            if p.grad is not None:
-                fisher[i] = torch.pow(p.grad.data, 2) / len(batch[0])
-        
+            loss = self._loss([b[i:i+1] for b in batch]) 
+
+            loss = loss[0] + self.compute_ewc_loss() 
+
+            loss.backward()
+
+            for j, p in enumerate(self.model.parameters()):
+                if p.grad is not None:
+                    fisher[j] += torch.pow(p.grad.data, 2) / len(batch[0])
+            
         self.fisher = fisher
     
     def inference(self,batch):
@@ -292,8 +298,7 @@ class Model:
             self.var_mean = checkpoint['var_mean'] 
             self.var_std = checkpoint['var_std']
             self.fisher = checkpoint['fisher'] 
-            if self.ewc:
-                self.p0 = [p.clone() for p in self.model.parameters()]
+            self.p0 = [p.clone() for p in self.model.parameters()]
         else:
             sys.stdout.write('Checkpoint not found, using default model\n')
             sys.stdout.flush()
@@ -305,6 +310,9 @@ class Model:
         
         init_filename = EXP_PATH + 'init.pb'
         pred_filename = EXP_PATH + 'pred.pb'
+
+        sys.stdout.write('Loading ONNX model...\n')
+        sys.stdout.flush()
 
         if not (os.path.isfile(init_filename) or os.path.isfile(pred_filename)):
             self.save_onnx()
