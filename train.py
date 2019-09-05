@@ -326,8 +326,10 @@ if early_stopping:
         loss_avg = [l / iters_per_epoch for l in loss_avg]
 
         _epoch += 1
-
+        
         loss_val = loss_by_chunk(v_idx)
+
+        scheduler_step(loss_val)
 
         if loss_val[0] < loss_val_best:
             loss_val_best = loss_val[0]
