@@ -516,4 +516,25 @@ def backup_trace_welford_v2(trace,node_stats,value):
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v, node_stats[idx][4])
 
+@jit(nopython=True,cache=True)
+def select_index_random(index,child,node_stats):
+
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
+        _child_nodes = list(set(_child_nodes))
+
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
+            break
+
+        index = _child_nodes[np.random.randint(len_c)]
+
+    return np.array(trace, dtype=np.int32)
+
 
