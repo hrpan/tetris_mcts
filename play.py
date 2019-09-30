@@ -1,6 +1,6 @@
 from os.path import dirname
 import os, sys
-sys.path.append('../../pyTetris')
+sys.path.append('../pyTetris')
 from nbTetris import Tetris
 import numpy as np
 import argparse
@@ -131,11 +131,9 @@ while True:
                 break
         elif endless:
             ngames += 1
-            print('Episode: %3d Score: %10d Lines Cleared: %10d'%(ngames, game.getScore(), game.getLines()))
+            print('Episode: %3d Score: %10d Lines Cleared: %10d'%(ngames, game.getScore(), game.getLines()), flush=True)
             game.reset()
             agent.update_root(game, ngames)
-            if ngames < 5:
-                agent.remove_nodes()
         else:
             ngames -= 1
 
