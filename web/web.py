@@ -1,6 +1,5 @@
-import sys, os, shutil
-import threading
-import time
+import sys, os, shutil, threading, time
+from importlib import reload
 from collections import deque
 from datetime import datetime as dt
 import matplotlib.pyplot as plt
@@ -14,14 +13,16 @@ httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
 
 serve = httpd.serve_forever
 
+new_log_update = False
+new_model_update = False
+
 line_cleared = []
 score = []
 training_loss = []
 validation_loss = []
 last_lines = deque(maxlen=100)
 n_rm_since_last_game = 0
-last_update_time = dt.now()
-
+m = None
 def parseLog(filename):
 
     global line_cleared
@@ -30,7 +31,7 @@ def parseLog(filename):
     global validation_loss
     global last_lines
     global n_rm_since_last_game
-    global last_update_time 
+    global new_log_update 
 
     with open(filename) as f:
         while True:
@@ -61,10 +62,39 @@ def parseLog(filename):
             elif 'Episode' in line:
                 n_rm_since_last_game = 0
             last_lines.append(line)
-            last_update_time = dt.now()
+            new_log_update = True
 
     #return line_cleared, score, training_loss, validation_loss, last_lines, n_rm_since_last_game
 
+def check_model():
+
+    global new_model_update
+    global m
+    last_module_update = -1
+    last_model_update = -1
+
+    while True:
+
+        latest_module_update = os.path.getmtime('../model/model_pytorch.py')
+        if latest_module_update > last_module_update:
+            last_module_update = latest_module_update        
+            reload(M)
+        if os.path.isfile('../pytorch_model/model_checkpoint'):        
+            latest_model_update = os.path.getmtime('../pytorch_model/model_checkpoint')
+            if latest_model_update > last_model_update:
+                last_model_update = latest_model_update
+                new_model_update = True
+
+                m = M.Model(use_cuda=False)
+                os.chdir('../')
+                m.load()
+                os.chdir('./web')
+
+            else:
+                time.sleep(5)
+        else:
+            new_model_update = True
+            m = M.Model(use_cuda=False)
 def generate_html(log='', n=None):
     doc, tag, text = Doc().tagtext()
     with tag('html'):
@@ -106,88 +136,87 @@ if __name__ == '__main__':
 
     logger_thread = threading.Thread(target=parseLog, args=[filename])
     logger_thread.start()
-    m = M.Model(use_cuda=False)
 
-    last = dt.now()
+    model_thread = threading.Thread(target=check_model)
+    model_thread.start()
+
     while True:
 
-        if last < last_update_time:
-            last = last_update_time
-        else:
-            time.sleep(1)
-            continue
+        if new_log_update:
+            c1 = 'tab:blue'
+            c2 = 'tab:red'
+            plt.figure(figsize=(10, 5))
+            plt.plot(line_cleared, color=c1)
+            plt.xlabel('Episode')
+            plt.ylabel('Lines Cleared')
+            plt.gca().tick_params(axis='y', labelcolor=c1)
+            ax2 = plt.gca().twinx()
+            ax2.plot(score, color=c2)
+            ax2.set_ylabel('Score')
+            ax2.tick_params(axis='y', labelcolor=c2)
+            plt.title('Score / Line Clears vs Episode')
+            plt.savefig('img.png')
+            plt.clf()
 
-        c1 = 'tab:blue'
-        c2 = 'tab:red'
-        plt.figure(figsize=(10, 5))
-        plt.plot(line_cleared, color=c1)
-        plt.xlabel('Episode')
-        plt.ylabel('Lines Cleared')
-        plt.gca().tick_params(axis='y', labelcolor=c1)
-        ax2 = plt.gca().twinx()
-        ax2.plot(score, color=c2)
-        ax2.set_ylabel('Score')
-        ax2.tick_params(axis='y', labelcolor=c2)
-        plt.title('Score / Line Clears vs Episode')
-        plt.savefig('img.png')
-        plt.clf()
+            plt.figure(figsize=(6, 5))
+            plt.hist(line_cleared[-50:], bins=10)
+            plt.title('Lines Cleared in the last 50 games')
+            plt.savefig('lc_50.png')
+            plt.clf()
 
-        plt.figure(figsize=(6, 5))
-        plt.hist(line_cleared[-50:], bins=10)
-        plt.title('Lines Cleared in the last 50 games')
-        plt.savefig('lc_50.png')
-        plt.clf()
+            plt.figure(figsize=(10, 5))
+            plt.semilogy(training_loss, color=c1, label='Training loss')
+            plt.xlabel('Iteration')
+            plt.semilogy(validation_loss, color=c2, label='Validation loss')
+            plt.legend()
+            plt.title('Loss vs Iteration')
+            plt.savefig('img_loss.png')
+            plt.clf()
 
-        plt.figure(figsize=(10, 5))
-        plt.semilogy(training_loss, color=c1, label='Training loss')
-        plt.xlabel('Iteration')
-        plt.semilogy(validation_loss, color=c2, label='Validation loss')
-        plt.legend()
-        plt.title('Loss vs Iteration')
-        plt.savefig('img_loss.png')
-        plt.clf()
+            plt.figure(figsize=(6, 5))
+            plt.semilogy(training_loss[-100:], color=c1, label='Training loss')
+            plt.xlabel('Iteration')
+            plt.semilogy(validation_loss[-100:], color=c2, label='Validation loss')
+            plt.legend()
+            plt.title('Loss vs Iteration')
+            plt.savefig('loss_100.png')
+            plt.clf()
+            plt.close('all')
+        if new_model_update:
+            nbins = 100
+            plt.figure(figsize=(4, 4))
+            plt.hist(m.model.conv1.weight.data.numpy().ravel(), bins=nbins)
+            plt.title('Conv1 weights')
+            plt.savefig('conv1_weight.png')
+            plt.clf()
+            plt.hist(m.model.conv2.weight.data.numpy().ravel(), bins=nbins)
+            plt.title('Conv2 weights')
+            plt.savefig('conv2_weight.png')
+            plt.clf()
+            plt.hist(m.model.fc1.weight.data.numpy().ravel(), bins=nbins)
+            plt.title('FC1 weights')
+            plt.savefig('fc1_weight.png')
+            plt.clf()
+            plt.hist(m.model.fc_v.weight.data.numpy().ravel(), bins=nbins)
+            plt.title('FC_V weights')
+            plt.savefig('fc_v_weight.png')
+            plt.clf()
+            plt.hist(m.model.fc_var.weight.data.numpy().ravel(), bins=nbins)
+            plt.title('FC_VAR weights')
+            plt.savefig('fc_var_weight.png')
+            plt.clf()
 
-        plt.figure(figsize=(6, 5))
-        plt.semilogy(training_loss[-100:], color=c1, label='Training loss')
-        plt.xlabel('Iteration')
-        plt.semilogy(validation_loss[-100:], color=c2, label='Validation loss')
-        plt.legend()
-        plt.title('Loss vs Iteration')
-        plt.savefig('loss_100.png')
-        plt.clf()
 
-        plt.figure(figsize=(4, 4))
-        nbins = 100
+            plt.close('all')
 
-        os.chdir('../')
-        m.load()
-        os.chdir('./web')
+        if new_model_update or new_log_update:
+            with open('index.html', 'w') as f:
+                tmp = generate_html(last_lines, n_rm_since_last_game)
 
-        plt.hist(m.model.conv1.weight.data.numpy().ravel(), bins=nbins)
-        plt.title('Conv1 weights')
-        plt.savefig('conv1_weight.png')
-        plt.clf()
-        plt.hist(m.model.conv2.weight.data.numpy().ravel(), bins=nbins)
-        plt.title('Conv2 weights')
-        plt.savefig('conv2_weight.png')
-        plt.clf()
-        plt.hist(m.model.fc1.weight.data.numpy().ravel(), bins=nbins)
-        plt.title('FC1 weights')
-        plt.savefig('fc1_weight.png')
-        plt.clf()
-        plt.hist(m.model.fc_v.weight.data.numpy().ravel(), bins=nbins)
-        plt.title('FC_V weights')
-        plt.savefig('fc_v_weight.png')
-        plt.clf()
-        plt.hist(m.model.fc_var.weight.data.numpy().ravel(), bins=nbins)
-        plt.title('FC_VAR weights')
-        plt.savefig('fc_var_weight.png')
-        plt.clf()
+                #print(tmp)
+                f.write(tmp)
 
-        plt.close('all')
-        with open('index.html', 'w') as f:
-            tmp = generate_html(last_lines, n_rm_since_last_game)
-
-            #print(tmp)
-            f.write(tmp)
-
+        new_log_update = False
+        new_model_update = False
+        
+        time.sleep(1)
