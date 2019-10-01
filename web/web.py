@@ -23,6 +23,7 @@ validation_loss = []
 last_lines = deque(maxlen=100)
 n_rm_since_last_game = 0
 m = None
+
 def parseLog(filename):
 
     global line_cleared
@@ -33,36 +34,48 @@ def parseLog(filename):
     global n_rm_since_last_game
     global new_log_update 
 
-    with open(filename) as f:
-        while True:
-            line = f.readline()
-            if not line:
-                time.sleep(1)
-                continue
-            substr = 'Lines Cleared:'
-            substr2 = 'Score:'
-            substr_tl = 'training loss:'
-            substr_vl = 'validation loss:'
-            idx = line.find(substr)
-            idx_tl = line.find(substr_tl)
-            if idx > 0:
-                lc = int(line[idx+len(substr):])
-                idx2 = line.find(substr2)
-                sc = int(line[idx2+len(substr2):idx])
-                line_cleared.append(lc)
-                score.append(sc)
-            elif idx_tl > 0:  
-                idx_vl = line.find(substr_vl)
-                tl = float(line[idx_tl+len(substr_tl):idx_vl])
-                vl = float(line[idx_vl+len(substr_vl):])
-                training_loss.append(tl)
-                validation_loss.append(vl)
-            if 'REMOVING UNUSED NODES' in line:
-                n_rm_since_last_game += 1
-            elif 'Episode' in line:
-                n_rm_since_last_game = 0
-            last_lines.append(line)
-            new_log_update = True
+    last_log_update = -1
+    while True:
+        
+        latest_log_update = os.path.getmtime(filename)
+        if latest_log_update > last_log_update:
+            last_log_update = latest_log_update
+            line_cleared.clear()
+            score.clear()
+            training_loss.clear()
+            validation_loss.clear()
+            last_lines.clear()
+            n_rm_since_last_game = 0
+        else:
+            time.sleep(1)
+            continue
+
+        with open(filename) as f:
+            for line in f.readlines():
+                substr = 'Lines Cleared:'
+                substr2 = 'Score:'
+                substr_tl = 'training loss:'
+                substr_vl = 'validation loss:'
+                idx = line.find(substr)
+                idx_tl = line.find(substr_tl)
+                if idx > 0:
+                    lc = int(line[idx+len(substr):])
+                    idx2 = line.find(substr2)
+                    sc = int(line[idx2+len(substr2):idx])
+                    line_cleared.append(lc)
+                    score.append(sc)
+                elif idx_tl > 0:  
+                    idx_vl = line.find(substr_vl)
+                    tl = float(line[idx_tl+len(substr_tl):idx_vl])
+                    vl = float(line[idx_vl+len(substr_vl):])
+                    training_loss.append(tl)
+                    validation_loss.append(vl)
+                if 'REMOVING UNUSED NODES' in line:
+                    n_rm_since_last_game += 1
+                elif 'Episode' in line:
+                    n_rm_since_last_game = 0
+                last_lines.append(line)
+        new_log_update = True
 
     #return line_cleared, score, training_loss, validation_loss, last_lines, n_rm_since_last_game
 
@@ -74,7 +87,9 @@ def check_model():
     last_model_update = -1
 
     while True:
-
+        if not os.path.isfile('../model/model_pytorch.py'):
+            time.sleep(5)
+            continue
         latest_module_update = os.path.getmtime('../model/model_pytorch.py')
         if latest_module_update > last_module_update:
             last_module_update = latest_module_update        
