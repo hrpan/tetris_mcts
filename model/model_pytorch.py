@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils as U
 import torch.onnx
+import torch.utils.data as D
 import onnx
 import os, sys, subprocess
 import numpy as np
@@ -15,6 +16,7 @@ EXP_PATH = './pytorch_model/'
 
 n_actions = 7
 
+
 def convOutShape(shape_in,kernel_size,stride):
     return ((shape_in[0] - kernel_size) // stride + 1, (shape_in[1] - kernel_size) // stride + 1 )
 
@@ -25,7 +27,7 @@ class Net(nn.Module):
         
         kernel_size = 3
         stride = 1
-        filters = 32
+        filters = 16
 
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
         self.bn1 = nn.BatchNorm2d(filters)
@@ -35,37 +37,58 @@ class Net(nn.Module):
         self.bn2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
 
-        flat_in = _shape[0] * _shape[1] * filters
+        self.conv3 = nn.Conv2d(filters, 1, 1, 1)
+        flat_in = _shape[0] * _shape[1]
+        #flat_in = _shape[0] * _shape[1] * filters
  
-        n_fc1 = 128
+        n_fc1 = 64
         self.fc1 = nn.Linear(flat_in, n_fc1)
         flat_out = n_fc1
         #flat_out = flat_in
-
         
         self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_var.weight, mean=0., std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=1000, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=1000, std=.1)
 
     def forward(self, x):
-        x = self.bn1(F.relu(self.conv1(x)))
-        x = self.bn2(F.relu(self.conv2(x)))
+        #x = self.bn1(F.relu(self.conv1(x)))
+        #x = self.bn2(F.relu(self.conv2(x)))
         #x = F.relu(self.conv1(x))
         #x = F.relu(self.conv2(x))
+        #x = F.relu(self.conv3(x))
+        x = F.leaky_relu(self.conv1(x))
+        x = F.leaky_relu(self.conv2(x))
+        x = F.leaky_relu(self.conv3(x))
+
         x = x.view(x.shape[0], -1)
 
-        x = F.relu(self.fc1(x))
+        #x = F.relu(self.fc1(x))
+        x = F.leaky_relu(self.fc1(x))
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
+        #value = torch.exp(self.fc_v(x))
         value = self.fc_v(x)
-#        var = F.softplus(self.fc_var(x))
-        var = F.elu(self.fc_var(x)) + 1
+        #var = torch.exp(self.fc_var(x)) + 1
+        var = F.softplus(self.fc_var(x)) + 1
         return value, var, policy
 
 def convert(x):
     return torch.from_numpy(x.astype(np.float32))
+
+class Dataset(D.Dataset):
+    def __init__(self, data):
+        #states, values, variance, policy, weights
+        self.data = data
+
+    def __len__(self):
+        return len(self.data[0])
+
+    def __getitem__(self, index):
+        return [d[index] for d in self.data]  
+
 
 class Model:
     def __init__(self, training=False, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, mle_gauss=True, use_variance=True, use_policy=False, loss_type='mae', use_onnx=False, use_cuda=True):
@@ -83,8 +106,9 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()        
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-5)
+        #self.optimizer = optim.RMSprop(self.model.parameters(), lr=1e-3, eps=1e-3)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.99)
         self.scheduler = None
 
         self.v_mean = 0
@@ -113,12 +137,14 @@ class Model:
         self.use_onnx = use_onnx
 
     def _loss(self, batch):
-
-        state = torch.from_numpy(batch[0])
-        value = torch.from_numpy(batch[1])
-        variance = torch.from_numpy(batch[2])
-        policy = torch.from_numpy(batch[3])
-        weight = torch.from_numpy(batch[4])
+       
+        state, value, variance, policy, weight = batch
+        if type(state) is not torch.Tensor:
+            state = torch.from_numpy(batch[0])
+            value = torch.from_numpy(batch[1])
+            variance = torch.from_numpy(batch[2])
+            policy = torch.from_numpy(batch[3])
+            weight = torch.from_numpy(batch[4])
 
         if self.use_cuda:
             state = state.cuda()
@@ -169,10 +195,10 @@ class Model:
 
         losses = self._loss(batch)
         
-        result = [l.data.numpy() for l in losses]
+        result = [l.item() for l in losses]
 
         if self.ewc:
-            result.append(self.compute_ewc_loss().data.numpy())
+            result.append(self.compute_ewc_loss().item())
         else:
             result.append(0)
 
@@ -193,8 +219,14 @@ class Model:
             l = losses[0]
 
         l.backward()
-
-        #U.clip_grad_norm_(self.model.parameters(), 1e1)
+        #norm = 0.
+        #for p in self.model.parameters():
+        #    if p.grad is None:
+        #        continue
+        #    norm += p.grad.data.norm(2).item() ** 2
+        #norm = norm ** 0.5
+        #print(' ', norm)
+        #U.clip_grad_norm_(self.model.parameters(), 100)
       
         self.optimizer.step()
 
@@ -207,7 +239,51 @@ class Model:
             result.append(0)
 
         return result
-    
+
+    def train_dataset(self, 
+            dataset=None, 
+            batch_size=32,
+            iters_per_validation=1000,
+            early_stopping=True,
+            early_stopping_patience=10,
+            validation_fraction=0.1,
+            num_workers=2):
+        
+        validation_size = int(len(dataset[0]) * validation_fraction) + 1
+        training_set = Dataset([d[:-validation_size] for d in dataset])
+        training_loader = D.DataLoader(
+                training_set,
+                batch_size=batch_size,
+                sampler=D.RandomSampler(training_set, replacement=True), 
+                pin_memory=True,
+                num_workers=2)
+        validation_set = Dataset([d[-validation_size:] for d in dataset])
+        validation_loader = D.DataLoader(
+                validation_set, 
+                batch_size=1024, 
+                num_workers=2)
+        
+        fail = 0
+        #states, values, variance, policy, weights
+        loss_avg = 0
+        idx = 0
+        while True:
+            for batch in training_loader:
+                idx += 1
+                l = self.train(batch)
+                loss_avg += l[0]
+                if ( idx + 1 ) % iters_per_validation == 0:
+
+                    l_val = 0
+                    """
+                    for b in validation_loader:
+                        l = self.compute_loss(b)
+                        l_val += l[0] * len(b[0])
+                    l_val /= validation_size
+                    """
+                    print(loss_avg/iters_per_validation, l_val)
+                        
+
     def compute_fisher(self, batch):
         
         self.model.train()
@@ -250,21 +326,24 @@ class Model:
 
         self.model.eval()
 
-        state = convert(batch)
-        
-        with torch.no_grad():
-            output = self.model(state)
+        #state = convert(batch)
+        b = torch.from_numpy(batch).float()
+        if self.use_cuda:
+            b = b.cuda()
 
-        result = [o.data.numpy() for o in output]
-        v = np.random.normal(output[0], np.sqrt(output[1]))
+        with torch.no_grad():
+            output = self.model(b)
+
+        result = [o.cpu().numpy() for o in output]
+        v = np.random.normal(result[0], np.sqrt(result[1]))
         result[0] = v
         return result
 
 
-    def update_scheduler(self,val_loss):
+    def update_scheduler(self, **kwarg):
 
         if self.scheduler:
-            self.scheduler.step(val_loss)
+            self.scheduler.step(**kwarg)
 
     def save(self, verbose=True):
 
@@ -319,7 +398,7 @@ class Model:
         if os.path.isfile(filename):
             sys.stdout.write('Loading model...\n')
             sys.stdout.flush()
-            checkpoint = torch.load(filename)
+            checkpoint = torch.load(filename, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             self.v_mean = checkpoint['v_mean'] 
