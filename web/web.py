@@ -1,4 +1,4 @@
-import sys, os, shutil, threading, time
+import sys, os, shutil, threading, time, glob
 from importlib import reload
 from collections import deque
 from datetime import datetime as dt
@@ -7,27 +7,34 @@ from yattag import Doc
 from http.server import SimpleHTTPRequestHandler, HTTPServer
 sys.path.append('../')
 import model.model_pytorch as M
+import numpy as np
 server_address = ('', 8000)
 
 httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
 
 serve = httpd.serve_forever
 
-new_log_update = False
-new_model_update = False
+new_log_update = True
+new_model_update = True
 
 line_cleared = []
 score = []
+line_cleared_per_train = []
+score_per_train = []
+data_accumulated = []
 training_loss = []
 validation_loss = []
 last_lines = deque(maxlen=100)
 n_rm_since_last_game = 0
-m = None
+m = M.Model(use_cuda=False)
 
 def parseLog(filename):
 
     global line_cleared
     global score
+    global line_cleared_per_train
+    global score_per_train
+    global data_accumulated
     global training_loss
     global validation_loss
     global last_lines
@@ -42,6 +49,9 @@ def parseLog(filename):
             last_log_update = latest_log_update
             line_cleared.clear()
             score.clear()
+            line_cleared_per_train.clear()
+            score_per_train.clear()
+            data_accumulated.clear()
             training_loss.clear()
             validation_loss.clear()
             last_lines.clear()
@@ -51,6 +61,9 @@ def parseLog(filename):
             continue
 
         with open(filename) as f:
+            lc_avg_tmp = []
+            sc_avg_tmp = []
+            data_accum = 0
             for line in f.readlines():
                 substr = 'Lines Cleared:'
                 substr2 = 'Score:'
@@ -64,17 +77,39 @@ def parseLog(filename):
                     sc = int(line[idx2+len(substr2):idx])
                     line_cleared.append(lc)
                     score.append(sc)
+                    lc_avg_tmp.append(lc)
+                    sc_avg_tmp.append(sc)
+                    data_accumulated.append(data_accum)
                 elif idx_tl > 0:  
                     idx_vl = line.find(substr_vl)
                     tl = float(line[idx_tl+len(substr_tl):idx_vl])
-                    vl = float(line[idx_vl+len(substr_vl):])
                     training_loss.append(tl)
-                    validation_loss.append(vl)
+                    if idx_vl > 0:
+                        vl = float(line[idx_vl+len(substr_vl):])
+                        validation_loss.append(vl)
+                elif 'Training data size:' in line:
+                    data_accum += int(line[line.find(':')+1:line.find('V')])
+                if 'proceed to training' in line:
+                    if lc_avg_tmp:
+                        line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
+                        lc_avg_tmp.clear()
+                    else:
+                        line_cleared_per_train.append(line_cleared_per_train[-1]) 
+                    if sc_avg_tmp:
+                        score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
+                        sc_avg_tmp.clear()
+                    else:
+                        score_per_train.append(score_per_train[-1]) 
                 if 'REMOVING UNUSED NODES' in line:
                     n_rm_since_last_game += 1
                 elif 'Episode' in line:
                     n_rm_since_last_game = 0
                 last_lines.append(line)
+            if lc_avg_tmp:
+                line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
+            if sc_avg_tmp:
+                score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
+
         new_log_update = True
 
     #return line_cleared, score, training_loss, validation_loss, last_lines, n_rm_since_last_game
@@ -101,15 +136,11 @@ def check_model():
                 new_model_update = True
 
                 m = M.Model(use_cuda=False)
-                os.chdir('../')
-                m.load()
-                os.chdir('./web')
+                m.load(filename='../pytorch_model/model_checkpoint')
 
             else:
                 time.sleep(5)
-        else:
-            new_model_update = True
-            m = M.Model(use_cuda=False)
+
 def generate_html(log='', n=None):
     doc, tag, text = Doc().tagtext()
     with tag('html'):
@@ -117,14 +148,14 @@ def generate_html(log='', n=None):
             doc.stag('img', src='img.png')
             doc.stag('img', src='lc_50.png')
             doc.stag('br')
+            doc.stag('img', src='lc_sc_train.png')
+            doc.stag('img', src='data_accum.png')
+            doc.stag('br')
             doc.stag('img', src='img_loss.png')
             doc.stag('img', src='loss_100.png')
             doc.stag('br')
-            doc.stag('img', src='conv1_weight.png')
-            doc.stag('img', src='conv2_weight.png')
-            doc.stag('img', src='fc1_weight.png')
-            doc.stag('img', src='fc_v_weight.png')
-            doc.stag('img', src='fc_var_weight.png')
+            for img in sorted(glob.glob('./*_weight.png'), key=os.path.getmtime):
+                doc.stag('img', src=img)
             doc.stag('br')
             with doc.tag('textarea'):
                 doc.attr(rows='20')
@@ -179,6 +210,28 @@ if __name__ == '__main__':
             plt.savefig('lc_50.png')
             plt.clf()
 
+            if line_cleared_per_train and score_per_train:
+                tmp = np.array(line_cleared_per_train)
+                plt.figure(figsize=(8, 5))
+                plt.errorbar(x=list(range(len(tmp))), y=tmp[:,0], yerr=tmp[:,1], color=c1)
+                plt.xlabel('Training Sessions')
+                plt.ylabel('Lines Cleared')
+                plt.gca().tick_params(axis='y', labelcolor=c1)
+                ax2 = plt.gca().twinx()
+                tmp = np.array(score_per_train)
+                ax2.errorbar(x=list(range(len(tmp))), y=tmp[:,0], yerr=tmp[:,1], color=c2)
+                ax2.set_ylabel('Score')
+                ax2.tick_params(axis='y', labelcolor=c2)
+                plt.title('Average Score / Line Clears vs Training Sessions')
+                plt.savefig('lc_sc_train.png')
+                plt.clf()
+
+            plt.figure(figsize=(8, 5))
+            plt.plot(data_accumulated)
+            plt.title('Accumulated data vs Episode')
+            plt.savefig('data_accum.png')
+            plt.clf()
+
             plt.figure(figsize=(10, 5))
             plt.semilogy(training_loss, color=c1, label='Training loss')
             plt.xlabel('Iteration')
@@ -198,30 +251,17 @@ if __name__ == '__main__':
             plt.clf()
             plt.close('all')
         if new_model_update:
-            nbins = 100
-            plt.figure(figsize=(4, 4))
-            plt.hist(m.model.conv1.weight.data.numpy().ravel(), bins=nbins)
-            plt.title('Conv1 weights')
-            plt.savefig('conv1_weight.png')
-            plt.clf()
-            plt.hist(m.model.conv2.weight.data.numpy().ravel(), bins=nbins)
-            plt.title('Conv2 weights')
-            plt.savefig('conv2_weight.png')
-            plt.clf()
-            plt.hist(m.model.fc1.weight.data.numpy().ravel(), bins=nbins)
-            plt.title('FC1 weights')
-            plt.savefig('fc1_weight.png')
-            plt.clf()
-            plt.hist(m.model.fc_v.weight.data.numpy().ravel(), bins=nbins)
-            plt.title('FC_V weights')
-            plt.savefig('fc_v_weight.png')
-            plt.clf()
-            plt.hist(m.model.fc_var.weight.data.numpy().ravel(), bins=nbins)
-            plt.title('FC_VAR weights')
-            plt.savefig('fc_var_weight.png')
-            plt.clf()
+            nbins = 50
+            for module in m.model.named_modules():
+                if not module[0]:
+                    continue
+                print(module)
 
-
+                plt.figure(figsize=(4, 4))
+                plt.hist(module[1].weight.data.numpy().ravel(), bins=nbins)
+                plt.title('{} weights'.format(module[0]))
+                plt.savefig('{}_weight.png'.format(module[0]))
+                plt.clf()
             plt.close('all')
 
         if new_model_update or new_log_update:
