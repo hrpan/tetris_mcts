@@ -46,7 +46,9 @@ for ((i=1; i<=${n_worker}; i++)){
     DATA_PATHS+=" data/self${i}/tree*" 
     #DATA_PATHS+=" data/self${i}/data*" 
 }
+
 mkdir -p data/benchmark
+mkdir -p logs
 
 for ((x=$curr_cycle; x<200; x++)){
     echo Cycle $x 
