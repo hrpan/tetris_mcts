@@ -211,15 +211,14 @@ if __name__ == '__main__':
             plt.clf()
 
             if line_cleared_per_train and score_per_train:
-                tmp = np.array(line_cleared_per_train)
+                tmp, tmp2 = np.array(line_cleared_per_train), np.array(score_per_train)
                 plt.figure(figsize=(8, 5))
                 plt.errorbar(x=list(range(len(tmp))), y=tmp[:,0], yerr=tmp[:,1], color=c1)
                 plt.xlabel('Training Sessions')
                 plt.ylabel('Lines Cleared')
                 plt.gca().tick_params(axis='y', labelcolor=c1)
                 ax2 = plt.gca().twinx()
-                tmp = np.array(score_per_train)
-                ax2.errorbar(x=list(range(len(tmp))), y=tmp[:,0], yerr=tmp[:,1], color=c2)
+                ax2.errorbar(x=list(range(len(tmp2))), y=tmp2[:,0], yerr=tmp2[:,1], color=c2)
                 ax2.set_ylabel('Score')
                 ax2.tick_params(axis='y', labelcolor=c2)
                 plt.title('Average Score / Line Clears vs Training Sessions')
