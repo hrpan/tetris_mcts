@@ -236,7 +236,7 @@ if backend == 'pytorch':
         m.load()
     train_step = lambda batch, step: m.train(batch)
     compute_loss = lambda batch: m.compute_loss(batch)
-    scheduler_step = lambda val_loss: m.update_scheduler(val_loss)
+    scheduler_step = lambda **kwargs: m.update_scheduler(**kwargs)
     if target_normalization:
         m.v_mean = v_mean
         m.v_std = v_std
@@ -355,7 +355,7 @@ else:
 
         if validation and i % val_interval == 0:
             loss_val = loss_by_chunk(v_idx)
-            scheduler_step(loss_val[0])
+            scheduler_step(val_loss=loss_val[0])
             sys.stdout.write('\n')
 
         loss = train_step(batch,i)
