@@ -30,49 +30,44 @@ class Net(nn.Module):
         filters = 16
 
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
-        self.bn1 = nn.BatchNorm2d(filters)
+        #self.bn1 = nn.BatchNorm2d(filters)
         _shape = convOutShape((22,10), kernel_size, stride)
 
         self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
-        self.bn2 = nn.BatchNorm2d(filters)
+        #self.bn2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
 
         self.conv3 = nn.Conv2d(filters, 1, 1, 1)
         flat_in = _shape[0] * _shape[1]
         #flat_in = _shape[0] * _shape[1] * filters
  
-        n_fc1 = 64
+        n_fc1 = 32
         self.fc1 = nn.Linear(flat_in, n_fc1)
         flat_out = n_fc1
         #flat_out = flat_in
         
-        self.fc_p = nn.Linear(flat_out, n_actions)
+        #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=1000, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=1000, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=6, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=6, std=.1)
 
     def forward(self, x):
         #x = self.bn1(F.relu(self.conv1(x)))
         #x = self.bn2(F.relu(self.conv2(x)))
-        #x = F.relu(self.conv1(x))
-        #x = F.relu(self.conv2(x))
-        #x = F.relu(self.conv3(x))
         x = F.leaky_relu(self.conv1(x))
         x = F.leaky_relu(self.conv2(x))
         x = F.leaky_relu(self.conv3(x))
-
         x = x.view(x.shape[0], -1)
 
-        #x = F.relu(self.fc1(x))
         x = F.leaky_relu(self.fc1(x))
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
-        #value = torch.exp(self.fc_v(x))
-        value = self.fc_v(x)
-        #var = torch.exp(self.fc_var(x)) + 1
-        var = F.softplus(self.fc_var(x)) + 1
+        value = torch.exp(self.fc_v(x))
+        #value = self.fc_v(x)
+        var = torch.exp(self.fc_var(x)) + 1
+        #var = F.softplus(self.fc_var(x)) + 1
         return value, var, policy
 
 def convert(x):
@@ -106,10 +101,12 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()        
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-5)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3)
+        #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3, eps=1e-5, weight_decay=1e-3)
         #self.optimizer = optim.RMSprop(self.model.parameters(), lr=1e-3, eps=1e-3)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.99)
-        self.scheduler = None
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
+        #self.scheduler = None
+        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda epoch:
 
         self.v_mean = 0
         self.v_std = 1
@@ -193,7 +190,8 @@ class Model:
 
         self.model.eval()
 
-        losses = self._loss(batch)
+        with torch.no_grad():
+            losses = self._loss(batch)
         
         result = [l.item() for l in losses]
 
@@ -368,6 +366,10 @@ class Model:
                     'var_std': self.var_std,
                     'fisher': self.fisher,
                 }
+
+        if self.scheduler:
+            full_state['scheduler_state_dict'] = self.scheduler.state_dict()
+
         torch.save(full_state, filename)
 
         if self.use_onnx:
@@ -391,9 +393,9 @@ class Model:
 
         subprocess.run('convert-onnx-to-caffe2' + ' ' + output_arg + ' ' + init_arg + ' ' + file_arg, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    def load(self):
+    def load(self, filename=EXP_PATH + 'model_checkpoint'):
 
-        filename = EXP_PATH + 'model_checkpoint'
+        #filename = EXP_PATH + 'model_checkpoint'
 
         if os.path.isfile(filename):
             sys.stdout.write('Loading model...\n')
@@ -407,6 +409,8 @@ class Model:
             self.var_std = checkpoint['var_std']
             self.fisher = checkpoint['fisher'] 
             self.p0 = [p.clone() for p in self.model.parameters()]
+            if self.scheduler:
+                self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         else:
             sys.stdout.write('Checkpoint not found, using default model\n')
             sys.stdout.flush()
