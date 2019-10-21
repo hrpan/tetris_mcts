@@ -1,4 +1,4 @@
-import sys, os, shutil, threading, time, glob
+import sys, os, shutil, threading, time, glob, re
 from importlib import reload
 from collections import deque
 from datetime import datetime as dt
@@ -42,6 +42,15 @@ def parseLog(filename):
     global new_log_update 
 
     last_log_update = -1
+    
+    score_re = 'Episode:\s*(?P<episode>\d*)\s*' \
+            'Score:\s*(?P<score>\d*)\s*' \
+            'Lines Cleared:\s*(?P<lines>\d*)'   
+    train_re = 'Iteration:\s*(?P<iter>\d*)\s*' \
+            'training loss:\s*(?P<t_loss>\d*.\d*)\s*' \
+            'validation loss:\s*(?P<v_loss>\d*.\d*)\s*'
+    datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
+            'Validation data size:\s*(?P<vsize>\d*)'
     while True:
         
         latest_log_update = os.path.getmtime(filename)
@@ -65,30 +74,31 @@ def parseLog(filename):
             sc_avg_tmp = []
             data_accum = 0
             for line in f.readlines():
-                substr = 'Lines Cleared:'
-                substr2 = 'Score:'
-                substr_tl = 'training loss:'
-                substr_vl = 'validation loss:'
-                idx = line.find(substr)
-                idx_tl = line.find(substr_tl)
-                if idx > 0:
-                    lc = int(line[idx+len(substr):])
-                    idx2 = line.find(substr2)
-                    sc = int(line[idx2+len(substr2):idx])
+                match_score_re = re.search(score_re, line)
+                match_train_re = re.search(train_re, line)
+                match_datasize_re = re.search(datasize_re, line)
+                if match_score_re:
+                    d = match_score_re.groupdict()
+                    lc = int(d['lines'])
+                    sc = int(d['score'])
+                    print(lc, sc)
                     line_cleared.append(lc)
                     score.append(sc)
                     lc_avg_tmp.append(lc)
                     sc_avg_tmp.append(sc)
                     data_accumulated.append(data_accum)
-                elif idx_tl > 0:  
-                    idx_vl = line.find(substr_vl)
-                    tl = float(line[idx_tl+len(substr_tl):idx_vl])
+                elif match_train_re:
+                    d = match_train_re.groupdict()
+                    tl = float(d['t_loss'])
+                    vl = float(d['v_loss'])
                     training_loss.append(tl)
-                    if idx_vl > 0:
-                        vl = float(line[idx_vl+len(substr_vl):])
-                        validation_loss.append(vl)
-                elif 'Training data size:' in line:
-                    data_accum += int(line[line.find(':')+1:line.find('V')])
+                    validation_loss.append(vl)
+                elif match_datasize_re:
+                    d = match_datasize_re.groupdict()
+                    tsize = int(d['tsize'])
+                    vsize = int(d['vsize'])
+                    print(tsize, vsize)
+                    data_accum += (tsize + vsize)
                 if 'proceed to training' in line:
                     if lc_avg_tmp:
                         line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
@@ -252,7 +262,7 @@ if __name__ == '__main__':
         if new_model_update:
             nbins = 50
             for module in m.model.named_modules():
-                if not module[0]:
+                if not module[0] or not hasattr(module[1], 'weight') or module[1].weight is None:
                     continue
                 print(module)
 
