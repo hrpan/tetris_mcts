@@ -81,12 +81,12 @@ def parseLog(filename):
                     d = match_score_re.groupdict()
                     lc = int(d['lines'])
                     sc = int(d['score'])
-                    print(lc, sc)
                     line_cleared.append(lc)
                     score.append(sc)
                     lc_avg_tmp.append(lc)
                     sc_avg_tmp.append(sc)
                     data_accumulated.append(data_accum)
+                    n_rm_since_last_game = 0
                 elif match_train_re:
                     d = match_train_re.groupdict()
                     tl = float(d['t_loss'])
@@ -97,7 +97,6 @@ def parseLog(filename):
                     d = match_datasize_re.groupdict()
                     tsize = int(d['tsize'])
                     vsize = int(d['vsize'])
-                    print(tsize, vsize)
                     data_accum += (tsize + vsize)
                 if 'proceed to training' in line:
                     if lc_avg_tmp:
@@ -112,8 +111,6 @@ def parseLog(filename):
                         score_per_train.append(score_per_train[-1]) 
                 if 'REMOVING UNUSED NODES' in line:
                     n_rm_since_last_game += 1
-                elif 'Episode' in line:
-                    n_rm_since_last_game = 0
                 last_lines.append(line)
             if lc_avg_tmp:
                 line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
@@ -122,7 +119,6 @@ def parseLog(filename):
 
         new_log_update = True
 
-    #return line_cleared, score, training_loss, validation_loss, last_lines, n_rm_since_last_game
 
 def check_model():
 
