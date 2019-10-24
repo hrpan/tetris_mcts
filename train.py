@@ -329,7 +329,7 @@ if early_stopping:
         
         loss_val = loss_by_chunk(v_idx)
 
-        scheduler_step(loss_val)
+        scheduler_step(metrics=loss_val)
 
         if loss_val[0] < loss_val_best:
             loss_val_best = loss_val[0]
@@ -355,7 +355,7 @@ else:
 
         if validation and i % val_interval == 0:
             loss_val = loss_by_chunk(v_idx)
-            scheduler_step(val_loss=loss_val[0])
+            scheduler_step(metrics=loss_val[0])
             sys.stdout.write('\n')
 
         loss = train_step(batch,i)
