@@ -17,8 +17,15 @@ EXP_PATH = './pytorch_model/'
 n_actions = 7
 
 
-def convOutShape(shape_in,kernel_size,stride):
-    return ((shape_in[0] - kernel_size) // stride + 1, (shape_in[1] - kernel_size) // stride + 1 )
+def convOutShape(shape_in, kernel_size, stride):
+
+    if type(kernel_size) is not tuple:
+        kernel_size = (kernel_size, kernel_size)
+
+    if type(stride) is not tuple:
+        stride = (stride, stride)
+
+    return ((shape_in[0] - kernel_size[0]) // stride[0] + 1, (shape_in[1] - kernel_size[1]) // stride[1] + 1 )
 
 class Net(nn.Module):
 
@@ -27,21 +34,23 @@ class Net(nn.Module):
         
         kernel_size = 3
         stride = 1
-        filters = 16
+        filters = 32
 
-        self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
-        #self.bn1 = nn.BatchNorm2d(filters)
-        _shape = convOutShape((22,10), kernel_size, stride)
+        #self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
+        self.conv1 = nn.Conv2d(1, filters, kernel_size=4, stride=(2, 1))
+        self.bn1 = nn.BatchNorm2d(filters)
+        #self.gn1 = nn.GroupNorm(4, filters, affine=False)
+        #_shape = convOutShape((22,10), kernel_size, stride)
+        _shape = convOutShape((22,10), 4, stride=(2, 1))
 
         self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
-        #self.bn2 = nn.BatchNorm2d(filters)
+        self.bn2 = nn.BatchNorm2d(filters)
+        #self.gn2 = nn.GroupNorm(4, filters, affine=False)
         _shape = convOutShape(_shape, kernel_size, stride)
 
-        self.conv3 = nn.Conv2d(filters, 1, 1, 1)
-        flat_in = _shape[0] * _shape[1]
-        #flat_in = _shape[0] * _shape[1] * filters
+        flat_in = _shape[0] * _shape[1] * filters
  
-        n_fc1 = 32
+        n_fc1 = 128
         self.fc1 = nn.Linear(flat_in, n_fc1)
         flat_out = n_fc1
         #flat_out = flat_in
@@ -49,23 +58,24 @@ class Net(nn.Module):
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=6, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=6, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=1000, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=1000, std=.1)
 
     def forward(self, x):
-        #x = self.bn1(F.relu(self.conv1(x)))
-        #x = self.bn2(F.relu(self.conv2(x)))
-        x = F.leaky_relu(self.conv1(x))
-        x = F.leaky_relu(self.conv2(x))
-        x = F.leaky_relu(self.conv3(x))
+        x = self.bn1(F.relu(self.conv1(x)))
+        x = self.bn2(F.relu(self.conv2(x)))
+        #x = self.gn1(F.relu(self.conv1(x)))
+        #x = self.gn2(F.relu(self.conv2(x)))
+        #x = F.relu(self.conv1(x))
+        #x = F.relu(self.conv2(x))
         x = x.view(x.shape[0], -1)
 
-        x = F.leaky_relu(self.fc1(x))
+        x = F.relu(self.fc1(x))
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
-        value = torch.exp(self.fc_v(x))
-        #value = self.fc_v(x)
+        #value = torch.exp(self.fc_v(x))
+        value = self.fc_v(x)
         var = torch.exp(self.fc_var(x)) + 1
         #var = F.softplus(self.fc_var(x)) + 1
         return value, var, policy
@@ -101,12 +111,11 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()        
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3)
-        #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3, eps=1e-5, weight_decay=1e-3)
-        #self.optimizer = optim.RMSprop(self.model.parameters(), lr=1e-3, eps=1e-3)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-1)
+        #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4, eps=1e-5, weight_decay=1e0)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9)
         #self.scheduler = None
-        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda epoch:
+        self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda epoch: max(0.5 ** epoch, 1e-2))
 
         self.v_mean = 0
         self.v_std = 1
@@ -179,12 +188,12 @@ class Model:
     def compute_ewc_loss(self):
 
         if self.fisher:
-            ewc_loss = torch.tensor([0.], dtype=torch.float32, requires_grad=True)
+            ewc_loss = torch.tensor([0.], dtype=torch.float32, requires_grad=True, device=self.device)
             for i, p in enumerate(self.model.parameters()):
                 ewc_loss = ewc_loss + 0.5 * self.ewc_lambda * torch.sum(self.fisher[i] * (p - self.p0[i]) ** 2)
             return ewc_loss
         else:
-            return torch.tensor([0.], dtype=torch.float32, requires_grad=True)
+            return torch.tensor([0.], dtype=torch.float32, requires_grad=True, device=self.device)
 
     def compute_loss(self, batch):
 
@@ -281,6 +290,13 @@ class Model:
                     """
                     print(loss_avg/iters_per_validation, l_val)
                         
+    def get_fisher_from_adam(self):
+
+        self.fisher = []
+        for pg in self.optimizer.param_groups:
+            for p in pg['params']:
+                if 'exp_avg_sq' in self.optimizer.state[p]:
+                    self.fisher.append(self.optimizer.state[p]['exp_avg_sq'])
 
     def compute_fisher(self, batch):
         
