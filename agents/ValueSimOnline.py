@@ -8,7 +8,7 @@ eps = 1e-7
 
 class ValueSimOnline(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.01, n_actions=7, memory_size=100000, benchmark=False):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.01, n_actions=7, memory_size=250000, benchmark=False):
 
         super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions, init_nodes=500000, stochastic_inference=False)
 
@@ -124,7 +124,7 @@ class ValueSimOnline(Agent):
             self.arrs['child_stats'][idx].fill(0)
             self.arrs['node_stats'][idx].fill(0)
 
-    def store_nodes(self, nodes, min_visits=50):
+    def store_nodes(self, nodes, min_visits=30):
 
         sys.stderr.write('Storing unused nodes...\n')
         sys.stderr.flush()
@@ -143,7 +143,7 @@ class ValueSimOnline(Agent):
             variance.append(n_stats[idx][3])
             weights.append(n_stats[idx][0])
 
-    def train_nodes(self, batch_size=128, iters_per_val=250, loss_threshold=5, val_fraction=0.1, patience=50):
+    def train_nodes(self, batch_size=128, iters_per_val=500, loss_threshold=5, val_fraction=0.1, patience=20):
 
         sys.stderr.write('Training...\n')
         sys.stderr.flush()
@@ -175,7 +175,7 @@ class ValueSimOnline(Agent):
         #    sys.stderr.write('Enough training data ({} > {}), proceed to training.\n'.format(len(states), self.memory_size))
         #    sys.stderr.flush()
 
-        m_size = min(self.n_trains * 10000, self.memory_size)
+        m_size = min(self.n_trains * 15000, self.memory_size)
         if len(states) > m_size:
             sys.stderr.write('Enough training data ({} > {}), proceed to training.\n'.format(len(states), m_size))
             sys.stderr.flush()
@@ -208,7 +208,7 @@ class ValueSimOnline(Agent):
             iters += iters_per_val
             l_avg /= iters_per_val
             l_val = self.model.compute_loss(batch_val)[0]
-            self.model.update_scheduler()
+            #self.model.update_scheduler()
             if l_val < l_val_min:
                 self.model.save(verbose=False)
                 l_val_min = l_val
@@ -218,13 +218,14 @@ class ValueSimOnline(Agent):
             sys.stderr.write('Iteration:{:6d}  training loss:{:.3f} validation loss:{:.3f}\n'.format(iters, l_avg, l_val))
             sys.stderr.flush()
         #self.model.compute_fisher([states, values, variance, p_dummy, weights])
-
+        #self.model.get_fisher_from_adam()
         #self.model.save(verbose=False)
+        #self.model.p0 = [p.clone() for p in self.model.model.parameters()]
         self.model.load()
+        self.model.update_scheduler()
         self.model.training = False
 
         self.memory = [[], [], [], []]
-        #self.model.load()
 
         sys.stderr.write('Training complete.\n')
         sys.stderr.flush()
