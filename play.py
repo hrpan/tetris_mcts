@@ -4,6 +4,7 @@ sys.path.append('../pyTetris')
 from nbTetris import Tetris
 import numpy as np
 import argparse
+from util.gui import GUI
 from util.Data import DataSaver
 from importlib import import_module
 
@@ -48,12 +49,14 @@ parser.add_argument('--app', default=1, type=int, help='Actions-per-drop')
 parser.add_argument('--cycle', default=0, type=int, help='Number of cycle')
 parser.add_argument('--endless', default=False, help='Endless plays', action='store_true')
 parser.add_argument('--gamma', default=0.9, type=float, help='Discount factor')
+parser.add_argument('--gui', default=False, help='A simple GUI', action='store_true')
 parser.add_argument('--interactive', default=False, help='Text interactive interface', action='store_true')
 parser.add_argument('--mcts_const', default=5.0, type=float, help='PUCT constant')
 parser.add_argument('--mcts_sims', default=500, type=int, help='Number of MCTS sims')
 parser.add_argument('--mcts_tau', default=1.0, type=float, help='Temperature constant')
 parser.add_argument('--ngames', default=50, type=int, help='Number of episodes to play')
 parser.add_argument('--printboard', default=False, help='Print board', action='store_true')
+parser.add_argument('--print_board_to_file', default=False, help='Print board to file', action='store_true')
 parser.add_argument('--save', default=False, help='Save self-play episodes', action='store_true')
 parser.add_argument('--save_dir', default='./data/',type=str, help='Directory for save')
 parser.add_argument('--save_file', default='data', type=str, help='Filename to save')
@@ -65,12 +68,14 @@ app = args.app
 cycle = args.cycle
 endless = args.endless
 gamma = args.gamma
+gui = args.gui
 interactive = args.interactive
 mcts_sims = args.mcts_sims
 mcts_const = args.mcts_const
 mcts_tau = args.mcts_tau
 ngames = args.ngames
 printboard = args.printboard
+print_board_to_file = args.print_board_to_file
 save = args.save
 save_dir = args.save_dir
 save_file = args.save_file
@@ -98,6 +103,11 @@ if save:
 
 tracker = ScoreTracker()
 
+if gui:
+    G = GUI()
+
+if print_board_to_file:
+    board_output = open('board_output','wb')
 """
 MAIN GAME LOOP
 """
@@ -116,6 +126,15 @@ while True:
 
         if save:
             saver.add(ngames,action,agent,game)    
+
+    if gui:
+        G.update_canvas(game.getState())
+
+    if print_board_to_file:
+        board_output.truncate(0)
+        board_output.seek(0)
+        board_output.write(game.getState().tostring()) 
+        board_output.flush()
 
     game.play(action)
     
