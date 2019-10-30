@@ -5,7 +5,8 @@ My personal project for the love of Tetris.
 See the agent in action [here](https://www.youtube.com/watch?v=EALo2GfZuYU)!
 
 (Warning: Codes are a hot mess riddled with inconsistent styles and unclear namings, read them at your own risk.)
-(Warning2: I have been experimenting a lot of things lately, so some of the features may not work properly. If you intend to reproduce my earlier results make sure you check out my previous commits.)
+
+(Warning2: I have been experimenting a lot of things lately, so some of the features may not work properly. If you intend to reproduce my earlier results, make sure you check out my previous commits.)
 
 ## Major update
 
