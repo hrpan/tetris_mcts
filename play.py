@@ -44,7 +44,7 @@ class ScoreTracker:
 ARGUMENTS
 """
 parser = argparse.ArgumentParser()
-parser.add_argument('--agent_type', default='Vanilla', type=str, help='Which agent to use')
+parser.add_argument('--agent_type', default=None, type=str, help='Which agent to use')
 parser.add_argument('--app', default=1, type=int, help='Actions-per-drop')
 parser.add_argument('--cycle', default=0, type=int, help='Number of cycle')
 parser.add_argument('--endless', default=False, help='Endless plays', action='store_true')
@@ -60,7 +60,6 @@ parser.add_argument('--print_board_to_file', default=False, help='Print board to
 parser.add_argument('--save', default=False, help='Save self-play episodes', action='store_true')
 parser.add_argument('--save_dir', default='./data/',type=str, help='Directory for save')
 parser.add_argument('--save_file', default='data', type=str, help='Filename to save')
-parser.add_argument('--selfplay', default=False, help='Agent selfplay', action='store_true')
 args = parser.parse_args()
 
 agent_type = args.agent_type
@@ -79,7 +78,6 @@ print_board_to_file = args.print_board_to_file
 save = args.save
 save_dir = args.save_dir
 save_file = args.save_file
-selfplay = args.selfplay
 
 """
 SOME INITS
@@ -90,11 +88,13 @@ game = Tetris(*env_args)
 if endless:
     ngames = 0
 
-if selfplay:
+if agent_type:
     _agent_module = import_module('agents.'+agent_type)
     Agent = getattr(_agent_module,agent_type)
     agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args, n_actions = 7)
     agent.update_root(game, ngames)
+else:
+    agent = None
 
 if save:
     saver = DataSaver(save_dir, save_file, cycle)
@@ -117,7 +117,7 @@ while True:
         print('Current score:%d'%game.getScore())
         action = int(input('Play:'))
 
-    elif selfplay:
+    elif agent:
 
         if printboard:
             game.printState()
@@ -138,7 +138,7 @@ while True:
 
     game.play(action)
     
-    if selfplay:
+    if agent:
         agent.update_root(game, ngames)
 
     if game.end:
