@@ -97,7 +97,7 @@ class Dataset(D.Dataset):
 
 
 class Model:
-    def __init__(self, training=False, new=True, weighted_mse=False, ewc=False, ewc_lambda=1, use_variance=True, use_policy=False, loss_type='kldiv', use_onnx=False, use_cuda=True):
+    def __init__(self, training=False, new=True, weighted=False, ewc=False, ewc_lambda=1, use_variance=True, use_policy=False, loss_type='kldiv', use_onnx=False, use_cuda=True):
 
         self.use_cuda = use_cuda
 
@@ -123,7 +123,7 @@ class Model:
         self.var_mean = 0
         self.var_std = 1
 
-        self.weighted_mse = weighted_mse
+        self.weighted = weighted
 
         self.ewc = ewc
         self.ewc_lambda = ewc_lambda
@@ -133,14 +133,13 @@ class Model:
         self.use_policy = use_policy
         self.use_variance = use_variance
 
+        self.loss_type = loss_type
         if loss_type == 'mae':
             self.l_func = lambda x, y: torch.abs(x-y)
         elif loss_type == 'mse':
             self.l_func = lambda x, y: (x - y) ** 2
-        elif loss_type == 'mle':
-            self.l_func = lambda v_p, mu_p, v, mu: torch.log(v_p / v) + v / v_p - 1 + (mu - mu_p) ** 2 / v_p
-        elif loss_type == 'kldiv':
-            self.l_func = lambda v_p, mu_p, v, mu: 0.5 * torch.log(v_p / v) + 0.5 * (v_p + (mu - mu_p) ** 2) / v - 0.5
+        elif loss_type == 'mle' or loss_type == 'kldiv':
+            self.l_func = lambda v_p, mu_p, v, mu: torch.log(v_p / v) + (v + (mu - mu_p) ** 2) / v_p - 1
 
         self.use_onnx = use_onnx
 
@@ -162,10 +161,10 @@ class Model:
             weight = weight.cuda()
 
         _v, _var, _p = self.model(state)
-        if loss_type == 'mle':
+        if self.loss_type == 'mle':
             loss = (weight * self.l_func(_var, _v, variance, value)).mean()
             return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
-        elif loss_type == 'kldiv':
+        elif self.loss_type == 'kldiv':
             loss = self.l_func(_var, _v, variance, value).mean()
             return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
         else:

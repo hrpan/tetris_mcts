@@ -40,8 +40,8 @@ parser.add_argument('--save_interval', default=100, type=int, help='Number of it
 parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
 parser.add_argument('--target_normalization', default=False, help='Standardizes the targets', action='store_true')
 parser.add_argument('--td', default=False, help='Temporal difference update', action='store_true')
-parser.add_argument('--weighted_mse', default=False, help='Use weighted least square', action='store_true')
-parser.add_argument('--weighted_mse_mode', default=0, type=int, help='0: inverse of variance, 1: number of visits')
+parser.add_argument('--weighted', default=False, help='Weighted loss', action='store_true')
+parser.add_argument('--weighted_mode', default=0, type=int, help='0: inverse of variance, 1: number of visits')
 args = parser.parse_args()
 
 backend = args.backend
@@ -70,8 +70,8 @@ save_interval = args.save_interval
 shuffle = args.shuffle
 target_normalization = args.target_normalization
 td = args.td
-weighted_mse = args.weighted_mse
-weighted_mse_mode = args.weighted_mse_mode
+weighted = args.weighted
+weighted_mode = args.weighted_mode
 
 #========================
 """ 
@@ -87,7 +87,7 @@ if last_nfiles > 0:
 
 if len(list_of_data) == 0:
     from model.model_pytorch import Model
-    m = Model(training=True, weighted_mse=weighted_mse, ewc=ewc, ewc_lambda=ewc_lambda)
+    m = Model(training=True, weighted=weighted, ewc=ewc, ewc_lambda=ewc_lambda)
     m.load()
     m.save()
     exit()
@@ -119,13 +119,13 @@ if td:
     else:
         values = loader.value
         variance = loader.variance
-        if weighted_mse:
-            if weighted_mse_mode == 0:
+        if weighted:
+            if weighted_mode == 0:
                 weights = 1 / (variance + eps)
-            elif weighted_mse_mode == 1:
+            elif weighted_mode == 1:
                 weights = np.sum(loader.child_stats[:, 0], axis=1)
                 weights = weights / np.average(weights)
-            elif weighted_mse_mode == 2:
+            elif weighted_mode == 2:
                 weights = np.sum(loader.child_stats[:, 0], axis=1)
                 weights = weights / np.average(weights)
                 weights = weights / (variance + eps)
@@ -231,7 +231,7 @@ MODEL SETUP
 
 if backend == 'pytorch':
     from model.model_pytorch import Model
-    m = Model(training=True, weighted_mse=weighted_mse, ewc=ewc, ewc_lambda=ewc_lambda)
+    m = Model(training=True, weighted=weighted, ewc=ewc, ewc_lambda=ewc_lambda)
     if not new:
         m.load()
     train_step = lambda batch, step: m.train(batch)
