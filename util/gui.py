@@ -4,7 +4,7 @@ import numpy as np
 import time
 
 class GUI:
-    def __init__(self, block_width=30, board_shape=(22,10)):
+    def __init__(self, block_width=20, board_shape=(22,10)):
 
         self.root = tk.Tk()
         self.canvas = tk.Canvas(master=self.root, width=block_width*board_shape[1], height=block_width*board_shape[0])
@@ -23,7 +23,6 @@ class GUI:
             for y in range(self.board_shape[0]):
                 coord = (x * bw, y * bw, (x+1) * bw, (y+1) * bw)
                 self.canvas.create_rectangle(*coord, fill=self.cdict[board[y][x]])
-        self.root.update()
         self.root.update_idletasks()
 
 
