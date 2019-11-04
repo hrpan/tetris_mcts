@@ -525,7 +525,8 @@ def backup_trace_with_variance(trace, node_stats, value, variance):
             node_stats[idx][1] = v
         else:
             node_stats[idx][1] = (node_stats[idx][1] * n + v) / (n + 1)
-            node_stats[idx][3] = (node_stats[idx][3] * n ** 2 + variance) / (n + 1) ** 2
+            #assuming fully correlated
+            node_stats[idx][3] = ((node_stats[idx][3] ** 0.5 * n + variance ** 0.5) / (n + 1)) ** 2
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v, node_stats[idx][4])
 
@@ -576,6 +577,51 @@ def select_index_rv(index,child,node_stats):
         index = _child_nodes[_a]
 
     return np.array(trace, dtype=np.int32)
+
+@jit(nopython=True,cache=True)
+def select_index_mc(index,child,node_stats):
+
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
+        _child_nodes = list(set(_child_nodes))
+
+        len_c = len(_child_nodes)
+
+        if len_c == 0:
+            break
+
+        has_unvisited_node = False
+
+        _stats = np.zeros((2, len_c), dtype=np.float32)
+
+        _n = 0
+
+        for i in range(len_c):
+            _idx = _child_nodes[i]
+            if node_stats[_idx][0] == 0:
+                index = _idx
+                has_unvisited_node = True
+                break
+            _n += node_stats[_idx][0]
+            _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
+            _stats[1][i] = node_stats[_idx][3] 
+
+        if has_unvisited_node:
+            continue
+
+        _q = _stats[0] + np.random.randn(len_c) * _stats[1]
+
+        _a = np.argmax(_q)
+
+        index = _child_nodes[_a]
+
+    return np.array(trace, dtype=np.int32)
+
 
 
 @jit(nopython=True,cache=True)
