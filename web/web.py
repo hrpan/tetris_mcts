@@ -2,6 +2,8 @@ import sys, os, shutil, threading, time, glob, re
 from importlib import reload
 from collections import deque
 from datetime import datetime as dt
+import matplotlib as mpl
+mpl.use('Agg')
 import matplotlib.pyplot as plt
 from yattag import Doc
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -142,7 +144,10 @@ def check_model():
                 new_model_update = True
 
                 m = M.Model(use_cuda=False)
-                m.load(filename='../pytorch_model/model_checkpoint')
+                try:
+                    m.load(filename='../pytorch_model/model_checkpoint')
+                except:
+                    pass
 
             else:
                 time.sleep(5)
