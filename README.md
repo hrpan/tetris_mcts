@@ -6,7 +6,7 @@ See the agent in action [here](https://www.youtube.com/watch?v=EALo2GfZuYU)!
 
 (Warning: Codes are a hot mess riddled with inconsistent styles and unclear namings, read them at your own risk.)
 
-(Warning2: I have been experimenting a lot of things lately, so some of the features may not work properly. If you intend to reproduce my earlier results, make sure you check out my previous commits.)
+(Warning2: I have been experimenting with a lot of things lately, so some of the features may not work properly. If you intend to reproduce my earlier results, make sure you check out my previous commits.)
 
 ## Major update
 
@@ -79,12 +79,12 @@ However, such handcrafted rewards can bias your agents toward the target you set
 
 ## Prerequisite
 
-* tables==3.4.4
-* torch==1.1.0
-* matplotlib==2.2.2
-* onnx==1.5.0
-* numpy==1.16.4
-* numba==0.43.1
+* numba==0.45.1
+* numpy==1.17.2
+* yattag==1.12.2
+* torch==1.4.0a0+f669214
+* tables==3.5.2
+* matplotlib==3.1.1
 * caffe2==0.8.1
 * tensorflow==1.14.0 (not supported anymore, use PyTorch and caffe2)
 
