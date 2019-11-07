@@ -1,0 +1,8 @@
+numba==0.45.1
+numpy==1.17.2
+yattag==1.12.2
+torch==1.4.0a0+f669214
+tables==3.5.2
+matplotlib==3.1.1
+caffe2==0.8.1
+tensorflow==2.0.0
