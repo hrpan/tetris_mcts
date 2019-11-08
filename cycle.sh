@@ -54,8 +54,8 @@ for ((x=$curr_cycle; x<200; x++)){
     echo Cycle $x 
 
     python train.py --td \
-        --weighted_mse \
-        --weighted_mse_mode 1 \
+        --weighted \
+        --weighted_mode 1 \
         --save_loss \
         --batch_size $batch_size \
         --data_paths $DATA_PATHS \
