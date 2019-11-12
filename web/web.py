@@ -130,14 +130,16 @@ def check_model():
     last_model_update = -1
 
     while True:
-        if not os.path.isfile('../model/model_pytorch.py'):
+        try:
+            latest_module_update = os.path.getmtime('../model/model_pytorch.py')
+        except:
             time.sleep(5)
             continue
-        latest_module_update = os.path.getmtime('../model/model_pytorch.py')
         if latest_module_update > last_module_update:
             last_module_update = latest_module_update        
             reload(M)
-        if os.path.isfile('../pytorch_model/model_checkpoint'):        
+
+        try:
             latest_model_update = os.path.getmtime('../pytorch_model/model_checkpoint')
             if latest_model_update > last_model_update:
                 last_model_update = latest_model_update
@@ -149,8 +151,8 @@ def check_model():
                 except:
                     pass
 
-            else:
-                time.sleep(5)
+        else:
+            time.sleep(5)
 
 def generate_html(log='', n=None):
     doc, tag, text = Doc().tagtext()
