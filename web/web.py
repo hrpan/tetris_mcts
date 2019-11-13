@@ -151,7 +151,7 @@ def check_model():
                 except:
                     pass
 
-        else:
+        except:
             time.sleep(5)
 
 def generate_html(log='', n=None):
