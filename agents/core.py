@@ -6,20 +6,22 @@ from agents.special import std_quantile2, norm_quantile
 from numba import jit
 from numba import int32, float32
 
+jit_args = {'nopython': True, 'cache': False, 'fastmath': True}
+
 n_actions = 7
 
 eps = 1e-7
 
 __stats = np.zeros((6, n_actions), dtype=np.float32)
 
-@jit(nopython=True, cache=True)
+@jit(**jit_args)
 def findZero(arr):
     for i in range(n_actions):
         if arr[i] == 0:
             return i
     return False
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def select_index(index,child,node_stats):
 
     trace = []
@@ -73,7 +75,7 @@ def select_index(index,child,node_stats):
 
     return trace
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def backup_trace(trace,node_stats,value):
 
     for idx in trace:
@@ -83,7 +85,7 @@ def backup_trace(trace,node_stats,value):
         node_stats[idx][3] += v * v
         node_stats[idx][4] = max(v,node_stats[idx][4])
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def get_all_childs(index,child):
     
     to_traverse = [index,]
@@ -101,7 +103,7 @@ def get_all_childs(index,child):
         i += 1
     return set(to_traverse)
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def choose_action(p):
     _cdf = p.cumsum()
 
@@ -111,7 +113,7 @@ def choose_action(p):
 
     return _a
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def atomicSelect(stats):
 
     _n_sum = np.sum(stats[0])
@@ -138,7 +140,7 @@ def update_child_info(trace, action, child_info):
         if not found:
             child_info[s][a] = np.concatenate((child_info[s][a], [[_s, 1]]))
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def atomicFill(act, stats, node_stats, childs):
 
     val = 0
@@ -195,7 +197,7 @@ def findZero_2(index, child_info):
             return i
     return False
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def _tmp_func(stats, act, node_stats, childs):
     q_max = 0
     for i in range(len(childs)):
@@ -211,7 +213,7 @@ def _tmp_func(stats, act, node_stats, childs):
 
     return q_max 
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def _tmp_select(stats, v_max):
     v_max = v_max + eps
     _p = ( stats[3] + 0.5 ) / ( stats[0] + 1 )
@@ -245,7 +247,7 @@ def select_index_2(game, node_dict, node_stats, child_info):
 
     return trace, action
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def select_index_3(index,child,node_stats):
 
     trace = []
@@ -297,7 +299,7 @@ def select_index_3(index,child,node_stats):
 
     return np.array(trace, dtype=np.int32)
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def backup_trace_3(trace,node_stats,value,alpha=0.01):
     for idx in trace:
         v = value - node_stats[idx][2] 
@@ -310,7 +312,7 @@ def backup_trace_3(trace,node_stats,value,alpha=0.01):
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v,node_stats[idx][4])
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def select_index_bayes(index, child, node_stats, min_n=10):
     """
     based on bayes UCB
@@ -375,7 +377,7 @@ def select_index_bayes(index, child, node_stats, min_n=10):
     return np.array(trace, dtype=np.int32)
 
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def select_index_clt(index,child,node_stats):
 
     trace = []
@@ -423,59 +425,9 @@ def select_index_clt(index,child,node_stats):
 
     return np.array(trace, dtype=np.int32)
 
-@jit(nopython=True,cache=True)
-def select_index_correlated(index,child,node_stats):
-
-    trace = []
-
-    while True:
-
-        trace.append(index)
-
-        _child_nodes = []
-        for i in range(n_actions):
-            if child[index][i] != 0:
-                _child_nodes.append(child[index][i])
-
-        _child_nodes = list(set(_child_nodes))
-
-        len_c = len(_child_nodes)
-
-        if len_c == 0:
-            break
-
-        low_node = False
-
-        _stats = np.zeros((2, len_c), dtype=np.float32)
-
-        _n = node_stats[index][0]
-
-        for i in range(len_c):
-            _idx = _child_nodes[i]
-            if node_stats[_idx][0] <= 4 * np.log(_n):
-                index = _idx
-                low_node = True
-                break
-            _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
-            _stats[1][i] = node_stats[_idx][3] 
-
-        if low_node:
-            continue
-
-        _c = np.sqrt( _stats[1] ) * norm_quantile(_n)
-
-        _q = _stats[0]
-
-        _v = _q + _c 
-
-        _a = np.argmax(_v)
-
-        index = _child_nodes[_a]
-
-    return np.array(trace, dtype=np.int32)
 
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def backup_trace_welford(trace,node_stats,value):
     """
     numerical stable sample variance calculation based on welford's online algorithm
@@ -496,7 +448,7 @@ def backup_trace_welford(trace,node_stats,value):
         node_stats[idx][3] += delta * delta2
         node_stats[idx][4] = max(v,node_stats[idx][4])
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def backup_trace_welford_v2(trace,node_stats,value):
     """
     numerical stable sample variance calculation based on welford's online algorithm
@@ -516,7 +468,7 @@ def backup_trace_welford_v2(trace,node_stats,value):
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v, node_stats[idx][4])
 
-@jit(nopython=True,cache=True)
+@jit(**jit_args)
 def backup_trace_with_variance(trace, node_stats, value, variance):
     for idx in trace:
         v = value - node_stats[idx][2]
@@ -524,14 +476,74 @@ def backup_trace_with_variance(trace, node_stats, value, variance):
         if n == 0:
             node_stats[idx][1] = v
         else:
-            node_stats[idx][1] = (node_stats[idx][1] * n + v) / (n + 1)
+            node_stats[idx][1] += (v - node_stats[idx][1]) / (n + 1)
             #assuming fully correlated
-            node_stats[idx][3] = ((node_stats[idx][3] ** 0.5 * n + variance ** 0.5) / (n + 1)) ** 2
+            std_diff = (variance ** 0.5 - node_stats[idx][3] ** 0.5) / (n + 1)
+            node_stats[idx][3] = node_stats[idx][3] + 2 * node_stats[idx][3] ** 0.5 * std_diff + std_diff ** 2
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v, node_stats[idx][4])
 
-@jit(nopython=True,cache=True)
-def select_index_rv(index,child,node_stats):
+@jit(**jit_args)
+def check_low(child_nodes, node_stats, n=1):
+    low_nodes = [c for c in child_nodes if node_stats[c][0] < n]
+    if low_nodes:
+        return low_nodes[np.random.randint(len(low_nodes))]
+    else:
+        return 0
+
+@jit(**jit_args)
+def policy_clt(child_nodes, node_stats, curr_reward):
+    stats = np.zeros((2, len(child_nodes)), dtype=np.float32) 
+    n = 0
+    for i, c in enumerate(child_nodes):
+        n += node_stats[c][0]
+        stats[0][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
+        stats[1][i] = node_stats[c][3] / (node_stats[c][0] + eps)
+
+    _q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
+
+    return child_nodes[np.argmax(_q)]
+
+@jit(**jit_args)
+def policy_gauss(child_nodes, node_stats, curr_reward):
+    stats = np.zeros((2, len(child_nodes)), dtype=np.float32) 
+    n = 0
+    for i, c in enumerate(child_nodes):
+        n += node_stats[c][0]
+        stats[0][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
+        stats[1][i] = node_stats[c][3]
+
+    _q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
+
+    return child_nodes[np.argmax(_q)]
+
+@jit(**jit_args)
+def policy_mc(child_nodes, node_stats, curr_reward):
+    len_c = len(child_nodes)
+    stats = np.zeros((2, len_c), dtype=np.float32) 
+    for i, c in enumerate(child_nodes):
+        stats[0][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
+        stats[1][i] = node_stats[c][3]
+    _q = stats[0] + np.random.randn(len_c) * np.sqrt(stats[1])
+    return child_nodes[np.argmax(_q)]
+
+@jit(**jit_args)
+def policy_random(child_nodes, node_stats=None, curr_reward=None):
+    return child_nodes[np.random.randint(len(child_nodes))]
+
+@jit(**jit_args)
+def policy_greedy(child_nodes, node_stats, curr_reward):
+    c_max = 0
+    v_max = 0
+    for c in child_nodes:
+        v = node_stats[c][1] + node_stats[c][2] - curr_reward
+        if v >= v_max:
+            v_max = v
+            c_max = c
+    return c_max
+
+@jit(**jit_args)
+def select_trace(index, child, node_stats, policy=policy_clt):
 
     trace = []
 
@@ -546,103 +558,32 @@ def select_index_rv(index,child,node_stats):
 
         if len_c == 0:
             break
+        
+        r = node_stats[index][2]
 
-        has_unvisited_node = False
+        index = check_low(_child_nodes, node_stats)
 
-        _stats = np.zeros((2, len_c), dtype=np.float32)
+        if not index:
+            index = policy(_child_nodes, node_stats, r)
 
-        _n = 0
+    return np.array(trace, dtype=np.int32)
 
-        for i in range(len_c):
-            _idx = _child_nodes[i]
-            if node_stats[_idx][0] == 0:
-                index = _idx
-                has_unvisited_node = True
-                break
-            _n += node_stats[_idx][0]
-            _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
-            _stats[1][i] = node_stats[_idx][3] 
 
-        if has_unvisited_node:
+@jit(**jit_args)
+def backup_trace_by_policy(trace, node_stats, child, policy=policy_greedy):
+
+    for idx in trace:
+        node_stats[idx][0] += 1
+        child_nodes = [child[idx][i] for i in range(n_actions) if (child[idx][i] != 0 and node_stats[child[idx][i]][0] > 0)]
+        child_nodes = list(set(child_nodes))
+
+        if not child_nodes:
             continue
 
-        _c = np.sqrt( _stats[1] ) * norm_quantile(_n)
+        index = policy(child_nodes, node_stats, node_stats[idx][2])
 
-        _q = _stats[0]
-
-        _v = _q + _c 
-
-        _a = np.argmax(_v)
-
-        index = _child_nodes[_a]
-
-    return np.array(trace, dtype=np.int32)
-
-@jit(nopython=True,cache=True)
-def select_index_mc(index,child,node_stats):
-
-    trace = []
-
-    while True:
-
-        trace.append(index)
-
-        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
-        _child_nodes = list(set(_child_nodes))
-
-        len_c = len(_child_nodes)
-
-        if len_c == 0:
-            break
-
-        has_unvisited_node = False
-
-        _stats = np.zeros((2, len_c), dtype=np.float32)
-
-        _n = 0
-
-        for i in range(len_c):
-            _idx = _child_nodes[i]
-            if node_stats[_idx][0] == 0:
-                index = _idx
-                has_unvisited_node = True
-                break
-            _n += node_stats[_idx][0]
-            _stats[0][i] = node_stats[_idx][1] + node_stats[_idx][2] - node_stats[index][2]
-            _stats[1][i] = node_stats[_idx][3] 
-
-        if has_unvisited_node:
-            continue
-
-        _q = _stats[0] + np.random.randn(len_c) * _stats[1]
-
-        _a = np.argmax(_q)
-
-        index = _child_nodes[_a]
-
-    return np.array(trace, dtype=np.int32)
-
-
-
-@jit(nopython=True,cache=True)
-def select_index_random(index,child,node_stats):
-
-    trace = []
-
-    while True:
-
-        trace.append(index)
-
-        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
-        _child_nodes = list(set(_child_nodes))
-
-        len_c = len(_child_nodes)
-
-        if len_c == 0:
-            break
-
-        index = _child_nodes[np.random.randint(len_c)]
-
-    return np.array(trace, dtype=np.int32)
+        node_stats[idx][1] = node_stats[index][2] - node_stats[idx][2] + node_stats[index][1]
+        node_stats[idx][3] = node_stats[index][3]
+        node_stats[idx][4] = max(node_stats[idx][1], node_stats[idx][4])
 
 
