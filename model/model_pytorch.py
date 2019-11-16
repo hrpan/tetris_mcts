@@ -17,6 +17,7 @@ EXP_PATH = './pytorch_model/'
 
 n_actions = 7
 
+eps = 1e-3
 
 def convOutShape(shape_in, kernel_size, stride):
 
@@ -37,12 +38,10 @@ class Net(nn.Module):
         stride = 1
         filters = 32
 
-        #self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
-        self.conv1 = nn.Conv2d(1, filters, kernel_size=4, stride=(2, 1))
+        self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
         self.bn1 = nn.BatchNorm2d(filters)
         self.gn1 = nn.GroupNorm(4, filters, affine=False)
-        #_shape = convOutShape((22,10), kernel_size, stride)
-        _shape = convOutShape((22,10), 4, stride=(2, 1))
+        _shape = convOutShape((22,10), kernel_size, stride)
 
         self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
         self.bn2 = nn.BatchNorm2d(filters)
@@ -59,26 +58,26 @@ class Net(nn.Module):
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=1000, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=1e4, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=7, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=12, std=.1)
 
     def forward(self, x):
         #x = self.bn1(F.relu(self.conv1(x)))
         #x = self.bn2(F.relu(self.conv2(x)))
-        x = self.gn1(F.relu(self.conv1(x)))
-        x = self.gn2(F.relu(self.conv2(x)))
-        #x = F.relu(self.conv1(x))
-        #x = F.relu(self.conv2(x))
+        #x = self.gn1(F.relu(self.conv1(x)))
+        #x = self.gn2(F.relu(self.conv2(x)))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
         x = x.view(x.shape[0], -1)
 
         x = F.relu(self.fc1(x))
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
-        #value = torch.exp(self.fc_v(x))
-        value = self.fc_v(x)
-        #var = torch.exp(self.fc_var(x)) + 1
-        var = F.softplus(self.fc_var(x)) + 1 
+        value = torch.exp(self.fc_v(x))
+        #value = self.fc_v(x)
+        var = torch.exp(self.fc_var(x)) + eps
+        #var = F.softplus(self.fc_var(x))
         return value, var, policy
 
 def convert(x):
@@ -112,8 +111,10 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()        
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-1)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-1, weight_decay=1e-3)
+        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, amsgrad=True)
+        #self.optimizer = optim.Adamax(self.model.parameters(), lr=1e-4)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda epoch: max(0.5 ** epoch, 1e-2))
 
@@ -201,14 +202,20 @@ class Model:
         else:
             return torch.tensor([0.], dtype=torch.float32, requires_grad=True, device=self.device)
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch, chunksize=2048):
 
         self.model.eval()
-
+       
+        result = []
         with torch.no_grad():
-            losses = self._loss(batch)
+            for c in range(len(batch[0]) // chunksize + 1):
+                b = [d[c * chunksize: (c + 1) * chunksize] for d in batch]
+                losses = self._loss(batch)
+                r = [l.item() * len(b[0]) for l in losses]
+                result.append(r)
         
-        result = [l.item() for l in losses]
+        #result = [l.item() for l in losses]
+        result = (np.sum(result, axis=0) / len(batch[0])).tolist()
 
         if self.ewc:
             result.append(self.compute_ewc_loss().item())
