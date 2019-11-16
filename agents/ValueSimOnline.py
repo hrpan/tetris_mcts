@@ -8,17 +8,15 @@ eps = 1e-7
 
 class ValueSimOnline(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.01, n_actions=7, memory_size=250000, benchmark=False):
+    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.01, n_actions=7, memory_size=500000, benchmark=False):
 
-        super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions, init_nodes=500000, stochastic_inference=False)
+        super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions, init_nodes=500000, stochastic_inference=False, benchmark=benchmark)
 
         #self.model.ewc = True
 
         self.g_tmp = env(*env_args)
 
         self.backup_alpha = backup_alpha
-
-        self.benchmark = benchmark
 
         self.memory_size = memory_size
 
@@ -31,18 +29,19 @@ class ValueSimOnline(Agent):
         _child = self.arrs['child']
         _node_stats = self.arrs['node_stats']
 
-        trace = select_index_clt(root_index, _child, _node_stats)
+        trace = select_trace(root_index, _child, _node_stats)
 
         leaf_index = trace[-1]
 
         leaf_game = self.game_arr[leaf_index]
 
         value = leaf_game.getScore()
-
+        var = 0.
         if not leaf_game.end:
 
             v, var, p = self.evaluate_state(leaf_game.getState())
 
+            _node_stats[leaf_index][1] = v
             _node_stats[leaf_index][3] = var
 
             value += v
@@ -56,7 +55,8 @@ class ValueSimOnline(Agent):
                 _node_stats[_n][2] = _g.getScore()
 
         #backup_trace_3(trace, _node_stats, value, alpha=self.backup_alpha)
-        backup_trace_welford_v2(trace, _node_stats, value)
+        #backup_trace_welford_v2(trace, _node_stats, value)
+        backup_trace_with_variance(trace, _node_stats, value, var)
 
     def compute_stats(self, node=None):
 
@@ -114,6 +114,9 @@ class ValueSimOnline(Agent):
             self.store_nodes(self.available)
             self.train_nodes()
 
+        if self.saver:
+            self.save_nodes(self.available)
+
         for idx in self.available:
             _g = self.game_arr[idx]
 
@@ -124,7 +127,7 @@ class ValueSimOnline(Agent):
             self.arrs['child_stats'][idx].fill(0)
             self.arrs['node_stats'][idx].fill(0)
 
-    def store_nodes(self, nodes, min_visits=30):
+    def store_nodes(self, nodes, min_visits=50):
 
         sys.stderr.write('Storing unused nodes...\n')
         sys.stderr.flush()
@@ -133,17 +136,27 @@ class ValueSimOnline(Agent):
 
         g_arr = self.game_arr        
         n_stats = self.arrs['node_stats']
-        c_stats = self.arrs['child_stats']
+        child = self.arrs['child']
+
+        actions = self.n_actions
 
         for idx in nodes:
-            if n_stats[idx][0] < min_visits:
+            ns = n_stats[idx]
+            if ns[0] < min_visits:
+                continue
+            flag = False
+            for i in range(actions):
+                if n_stats[child[idx][i]][0] < 1:
+                    flag = True
+                    break
+            if flag:
                 continue
             states.append(g_arr[idx].getState())
-            values.append(n_stats[idx][1])
-            variance.append(n_stats[idx][3])
-            weights.append(n_stats[idx][0])
+            values.append(ns[1])
+            variance.append(ns[3])
+            weights.append(ns[0])
 
-    def train_nodes(self, batch_size=128, iters_per_val=500, loss_threshold=5, val_fraction=0.1, patience=20):
+    def train_nodes(self, batch_size=128, iters_per_val=1000, loss_threshold=5, val_fraction=0.1, patience=20):
 
         sys.stderr.write('Training...\n')
         sys.stderr.flush()
@@ -153,10 +166,12 @@ class ValueSimOnline(Agent):
         states = np.expand_dims(np.array(states, dtype=np.float32), 1)
         values = np.expand_dims(np.array(values, dtype=np.float32), -1)
         variance = np.expand_dims(np.array(variance, dtype=np.float32), -1)
-        variance += 1
         weights = np.expand_dims(np.array(weights, dtype=np.float32), -1)
         weights /= weights.mean()
         p_dummy = np.empty((len(variance), 7), dtype=np.float32)
+
+        #print('{0:.5f} {1:.5f} {2:.5f} {3:.5f}'.format(variance.mean(), variance.std(), variance.min(), variance.max()))
+        #print('{0:.5f} {1:.5f} {2:.5f} {3:.5f}'.format(values.mean(), values.std(), values.min(), values.max()))
 
         #if len(states) < self.memory_size:
         #    b_idx = np.random.choice(len(states), size=1024)
@@ -175,7 +190,7 @@ class ValueSimOnline(Agent):
         #    sys.stderr.write('Enough training data ({} > {}), proceed to training.\n'.format(len(states), self.memory_size))
         #    sys.stderr.flush()
 
-        m_size = min(self.n_trains * 15000, self.memory_size)
+        m_size = min((self.n_trains + 1) * 20000, self.memory_size)
         if len(states) > m_size:
             sys.stderr.write('Enough training data ({} > {}), proceed to training.\n'.format(len(states), m_size))
             sys.stderr.flush()
@@ -218,7 +233,6 @@ class ValueSimOnline(Agent):
             sys.stderr.write('Iteration:{:6d}  training loss:{:.3f} validation loss:{:.3f}\n'.format(iters, l_avg, l_val))
             sys.stderr.flush()
         #self.model.compute_fisher([states, values, variance, p_dummy, weights])
-        #self.model.get_fisher_from_adam()
         #self.model.save(verbose=False)
         #self.model.p0 = [p.clone() for p in self.model.model.parameters()]
         self.model.load()
