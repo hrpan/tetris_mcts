@@ -6,7 +6,7 @@ from collections import deque
 import numba
 class Agent:
 
-    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7, saver=None, stochastic_inference=False, min_visits=30):
+    def __init__(self, sims, init_nodes=500000, backend='tensorflow', env=None, env_args=((22,10), 1), n_actions = 7, saver=None, stochastic_inference=False, min_visits=30, benchmark=False):
 
         self.sims = sims
         
@@ -25,6 +25,8 @@ class Agent:
         self.saver = saver
 
         self.stochastic_inference = stochastic_inference
+
+        self.benchmark = benchmark
 
         self.init_array()
         self.init_model()
@@ -66,6 +68,7 @@ class Agent:
 
         elif self.backend == 'pytorch':
             from model.model_pytorch import Model
+            #from model.model_bayesian import Model
             self.model = Model()
             self.model.load()
 
@@ -139,12 +142,18 @@ class Agent:
     def play(self):
 
         for i in range(self.sims):
+            #print(self.arrs['node_stats'][self.root].astype(np.int))
+            #for c in self.arrs['child'][self.root]:
+            #    print(self.arrs['node_stats'][c].astype(np.int))
+            #input()
             self.mcts(self.root)
-
+        #input()
         self.stats = self.compute_stats()
-
+        #print(self.arrs['node_stats'][self.root].astype(np.int), self.stats[0:2].astype(np.int))
         if np.all(self.stats[3] == 0):
             action = np.random.choice(self.n_actions)
+        elif not self.benchmark:
+            action = np.random.choice(self.n_actions, p=self.stats[0]/self.stats[0].sum())
         else:
             action = np.argmax(self.stats[3])
 
