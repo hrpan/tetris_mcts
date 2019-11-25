@@ -2,6 +2,7 @@ import sys, os, shutil, threading, time, glob, re
 from importlib import reload
 from collections import deque
 from datetime import datetime as dt
+from shutil import copy2
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
@@ -126,15 +127,15 @@ def check_model():
 
     global new_model_update
     global m
-    last_module_update = -1
-    last_model_update = -1
+
+    latest_module_update, last_module_update = -1, -1
+    latest_model_update, last_model_update = -1, -1
 
     while True:
         try:
             latest_module_update = os.path.getmtime('../model/model_pytorch.py')
         except:
-            time.sleep(5)
-            continue
+            pass
         if latest_module_update > last_module_update:
             last_module_update = latest_module_update        
             reload(M)
@@ -147,7 +148,8 @@ def check_model():
 
                 m = M.Model(use_cuda=False)
                 try:
-                    m.load(filename='../pytorch_model/model_checkpoint')
+                    copy2('../pytorch_model/model_checkpoint', './')
+                    m.load(filename='./model_checkpoint')
                 except:
                     pass
 
