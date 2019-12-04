@@ -21,7 +21,7 @@ colors = {
     'text': '#cccccc'
 }
 
-fig, fig_pt, fig_loss, fig_board = [{'data': []}] * 4
+fig, fig_pt, fig_loss, fig_board = [{'data': [], 'layout': {'paper_bgcolor': 'black', 'plot_bgcolor': 'black'}}] * 4
 
 def serve_layout():
     return html.Div([html.Div([
