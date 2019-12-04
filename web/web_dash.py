@@ -21,7 +21,7 @@ colors = {
     'text': '#cccccc'
 }
 
-fig, fig_pt, fig_loss, fig_board = None, None, None, None
+fig, fig_pt, fig_loss, fig_board = [{'data': []}] * 4
 
 def serve_layout():
     return html.Div([html.Div([
@@ -34,11 +34,15 @@ def serve_layout():
                 n_intervals=0)
             ]),
             html.Div([
-            dcc.Graph(id='live-board', figure=fig_board),
-            dcc.Interval(id='board-interval',
+                dcc.Graph(id='live-board', figure=fig_board, config={'displayModeBar': False}),
+                dcc.Interval(id='board-interval',
                 interval=1000,
                 n_intervals=0),
-            ])
+            ],
+            style={'borderWidth': '1px',
+                'borderStyle': 'solid',
+                'borderColor': 'white',
+                'width': '305px'})
         ])
 
 app.layout = serve_layout
@@ -115,7 +119,7 @@ def parser_update():
         board_parser.update()
         d = board_parser.data[::-1,:]
         colorscale=[[0, 'rgb(100, 100, 100)'], [0.5, 'rgb(0, 0, 0)'], [1, 'rgb(255, 255, 255)']]
-        hmap = go.Heatmap(z=d, hoverinfo='none', colorscale=colorscale, showscale=False, xgap=2, ygap=2)
+        hmap = go.Heatmap(z=d, hoverinfo='none', colorscale=colorscale, showscale=False, xgap=1, ygap=1)
         layout_board = go.Layout(
                 title={'text': 'Board', 'font':{'color': colors['text']}},
                 plot_bgcolor=colors['background'],
@@ -123,9 +127,10 @@ def parser_update():
                 font={'color': colors['text']},
                 height=760,
                 width=300,
-                xaxis={'visible': False},
-                yaxis={'visible': False},
-                margin=dict(l=5, t=100, b=5))
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                margin=dict(l=5, t=100, b=5, r=5),
+                hovermode=False)
         fig_board = go.Figure(data=[hmap], layout=layout_board)
         time.sleep(.1)
 
