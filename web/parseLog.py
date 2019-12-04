@@ -3,6 +3,21 @@ import numpy as np
 
 from datetime import datetime as dt
 
+class BoardParser:
+    def __init__(self):
+        
+        self.file = open('../board_output', 'rb')
+
+        self.data = None
+
+    def update(self):
+
+        s = self.file.read()
+        
+        if len(s) == 220:
+            self.data = np.fromstring(s, dtype=np.int8).reshape(22, 10)
+
+        self.file.seek(0)
 
 class Parser:
     def __init__(self, filename):
