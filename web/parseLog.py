@@ -1,7 +1,9 @@
-import re, sys, os, shutil, time, glob
+import re, sys, os, shutil, time, glob, filecmp
 import numpy as np
-
+sys.path.append('../')
+import model.model_pytorch as M
 from datetime import datetime as dt
+from importlib import reload
 
 class BoardParser:
     def __init__(self):
@@ -98,6 +100,16 @@ class Parser:
             if sc_avg_tmp:
                 score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
 
+            if 'line' in locals() and not 'loss' in line:
+                flocal = './model_checkpoint'
+                ftarget = '../pytorch_model/model_checkpoint'
+                
+                ex_local = os.path.isfile(flocal)
+                ex_target = os.path.isfile(ftarget)
+
+                if ex_target and ((ex_local and not filecmp.cmp(flocal, ftarget)) or not ex_local):
+                    shutil.copyfile(ftarget, flocal)
+
         self.data = dict(
                 line_cleared=line_cleared, 
                 line_cleared_per_train=line_cleared_per_train,
@@ -107,4 +119,36 @@ class Parser:
                 training_loss=training_loss,
                 validation_loss=validation_loss)
 
+class ModelParser:
+    def __init__(self):
 
+        self.last_update = -1
+        
+        self.data = {}
+        
+    def check_update(self):
+
+        if os.path.isfile('./model_checkpoint'):
+            latest = os.path.getmtime('./model_checkpoint')
+            if latest > self.last_update:
+                self.last_update = latest
+                reload(M)
+                m = M.Model(use_cuda=False)
+                m.load(filename='./model_checkpoint')
+                self.parse(m)
+                return True
+        elif not self.data:
+            m = M.Model(use_cuda=False)
+            self.parse(m)
+            return True
+        return False
+
+    def parse(self, model):
+        self.data = {}
+        for module in model.model.named_modules():
+            if not module[0] or not hasattr(module[1], 'weight') or module[1].weight is None:
+                continue
+
+            self.data[module[0]] = module[1].weight.data.numpy().ravel()
+        
+        
