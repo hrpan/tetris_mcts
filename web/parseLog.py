@@ -26,14 +26,14 @@ class Parser:
 
         self.filename = filename
     
-        self.last_log_update = -1
+        self.last_update = -1
 
     def check_update(self):
 
-        latest_log_update = os.path.getmtime(self.filename)
+        latest_update = os.path.getmtime(self.filename)
 
-        if latest_log_update > self.last_log_update:
-            self.last_log_update = latest_log_update
+        if latest_update > self.last_update:
+            self.last_update = latest_update
             self.parse()
             return True
         return False

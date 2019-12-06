@@ -21,20 +21,95 @@ colors = {
     'text': '#cccccc'
 }
 
-fig, fig_pt, fig_loss, fig_data, fig_weight, fig_board = [{'data': [], 'layout': {'paper_bgcolor': 'black', 'plot_bgcolor': 'black'}}] * 6
+fig = go.Figure(
+    data=[
+        go.Scatter(x=[], y=[], name='Lines Cleared', mode='lines'),
+        go.Scatter(x=[], y=[], name='Score', mode='lines', yaxis='y2')
+    ],
+    layout=go.Layout(
+        title={'text': 'Lines Cleared / Score', 'font': {'color': colors['text']}},    
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']},
+        xaxis={'title': 'Episode'},
+        yaxis={'title': 'Lines Cleared', 'showgrid': False, 'rangemode': 'tozero'},
+        yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False, 'rangemode': 'tozero'}
+    )
+)
+        
+fig_pt = go.Figure(
+    data=[
+        go.Scatter(x=[], y=[], error_y=dict(type='data', array=[], visible=True), name='Lines Cleared', mode='lines'),
+        go.Scatter(x=[], y=[], error_y=dict(type='data', array=[], visible=True), name='Score', mode='lines', yaxis='y2')
+    ],
+    layout=go.Layout(
+        title={'text': 'Lines Cleared / Score per Training Session', 'font': {'color': colors['text']}},    
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']},
+        xaxis={'title': 'Training Session'},
+        yaxis={'title': 'Lines Cleared', 'showgrid': False},
+        yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False}
+    )
+)
 
-def serve_layout():
-    return html.Div([
+fig_loss=go.Figure(
+    data=[
+        go.Scatter(x=[], y=[], name='Training Loss', mode='lines'),
+        go.Scatter(x=[], y=[], name='Validation Loss', mode='lines')
+    ],
+    layout=go.Layout(
+        title={'text': 'Training / Validation Loss', 'font': {'color': colors['text']}},
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']}
+    )
+)
+
+fig_data = go.Figure(
+    data=[
+        go.Scatter(x=[], y=[], name='Data Accumulated', mode='lines')
+    ],
+    layout=go.Layout(
+        title={'text': 'Accumulated Training Data', 'font': {'color': colors['text']}},
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']}
+    )
+)
+
+colorscale=[[0, 'rgb(100, 100, 100)'], [0.5, 'rgb(0, 0, 0)'], [1, 'rgb(255, 255, 255)']]
+fig_board = go.Figure(
+    data=[
+        go.Heatmap(z=[[0] * 10] * 22, hoverinfo='none', colorscale=colorscale, showscale=False, xgap=1, ygap=1)
+    ],
+    layout=go.Layout(
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']},
+        height=760,
+        width=300,
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        margin=dict(l=5, t=5, b=5, r=5),
+        hovermode=False
+    ),
+)
+
+fig_weight = [{'data': [], 'layout': {'paper_bgcolor': 'black', 'plot_bgcolor': 'black'}}] 
+
+
+app.layout = html.Div([
             html.Div([
                 dcc.Graph(id='live-ls', figure=fig),
                 dcc.Graph(id='live-ls-pt', figure=fig_pt),
                 dcc.Graph(id='live-loss', figure=fig_loss),
                 dcc.Graph(id='live-data', figure=fig_data),
-                dcc.Store(id='last-update', data={'t': -1}),
+                dcc.Store(id='last-update', data=0),
             ]),
             html.Div([
                 dcc.Graph(id='live-weights', figure=fig_weight),
-                dcc.Store(id='last-w-update', data={'t': -1}),
+                dcc.Store(id='last-w-update', data=0),
             ]),
             html.Div([
                 dcc.Graph(id='live-board', figure=fig_board, config={'displayModeBar': False}),
@@ -47,42 +122,29 @@ def serve_layout():
             dcc.Interval(id='interval-component', interval=1000, n_intervals=0)
         ])
 
-app.layout = serve_layout
-
 @app.callback(
-    [Output('live-board', 'figure')], 
-    [Input('interval-component', 'n_intervals')], 
-    [State('live-board', 'figure')])
-def update_board_graph(n, f):
-    global fig_board
-    if f == fig_board:
-        return dash.no_update,
-    else:
-        return fig_board,
-
-@app.callback(
-    [Output('live-weights', 'figure'), Output('last-w-update', 'data')],
-    [Input('interval-component', 'n_intervals')], 
-    [State('last-w-update', 'data')])
-def update_weight_graphs(n, data):
-    if model_parser.last_update != data['t']:
-        data['t'] = model_parser.last_update
-        global fig_weight
-        return fig_weight, data
-    else:
-        return [dash.no_update] * 2
-
-@app.callback(
-    [Output('live-ls', 'figure'), Output('live-ls-pt', 'figure'), Output('live-loss', 'figure'), Output('live-data', 'figure'), Output('last-update', 'data')], 
+    [Output('last-update', 'data'), Output('last-w-update', 'data')],
     [Input('interval-component', 'n_intervals')],
-    [State('last-update', 'data')])
-def update_log_graphs(n, data):
-    if log_parser.last_log_update != data['t']:
-        data['t'] = log_parser.last_log_update
-        global fig, fig_pt, fig_loss, fig_data
-        return fig, fig_pt, fig_loss, fig_data, data
-    else:
-        return [dash.no_update] * 5
+    [State('last-update', 'data'), State('last-w-update', 'data')])
+def update_graphs(n, data, data_w):
+    result = []
+    data = log_parser.last_update if log_parser.last_update != data else dash.no_update
+    data_w = model_parser.last_update if model_parser.last_update != data_w else dash.no_update
+    return [data, data_w]
+
+@app.callback(Output('live-board', 'figure'), [Input('interval-component', 'n_intervals')])
+def update_board(n):
+    return fig_board
+
+@app.callback(
+    [Output('live-ls', 'figure'), Output('live-ls-pt', 'figure'), Output('live-loss', 'figure'), Output('live-data', 'figure')],
+    [Input('last-update', 'data')])
+def update_log_graphs(d):
+    return fig, fig_pt, fig_loss, fig_data
+
+@app.callback(Output('live-weights', 'figure'), [Input('last-w-update', 'data')])
+def update_weight_graphs(d):
+    return fig_weight
 
 
 log_parser = Parser('../log_endless')
@@ -96,64 +158,30 @@ def parser_update():
         if update:
             line_cleared = log_parser.data['line_cleared']
             score = log_parser.data['score']
-            plot_lc = go.Scatter(x=list(range(len(line_cleared))), y=line_cleared, name='Lines Cleared', mode='lines')
-            plot_sc = go.Scatter(x=list(range(len(score))), y=score, name='Score', mode='lines', yaxis='y2')
-            layout = go.Layout(
-                title={'text': 'Lines Cleared / Score', 'font': {'color': colors['text']}},    
-                plot_bgcolor=colors['background'],
-                paper_bgcolor=colors['background'],
-                font={'color': colors['text']},
-                xaxis={'title': 'Episode'},
-                yaxis={'title': 'Lines Cleared', 'showgrid': False, 'rangemode': 'tozero'},
-                yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False, 'rangemode': 'tozero'})
+            fig.data[0]['x'] = list(range(len(line_cleared)))
+            fig.data[0]['y'] = line_cleared
+            fig.data[1]['x'] = list(range(len(score)))
+            fig.data[1]['y'] = score
 
-            fig = go.Figure(data=[plot_lc, plot_sc], layout=layout)
-             
             line_cleared_pt = log_parser.data['line_cleared_per_train']
             score_pt = log_parser.data['score_per_train']
-            lc_pt = np.array(log_parser.data['line_cleared_per_train'])
-            if lc_pt.size > 0:
-                plot_lc_pt = go.Scatter(x=list(range(len(lc_pt))), y=lc_pt[:,0], error_y=dict(type='data', array=lc_pt[:, 1], visible=True), name='Lines Cleared', mode='lines')
-            else:
-                plot_lc_pt = go.Scatter(x=[], y=[], error_y=dict(type='data', array=[], visible=True), name='Lines Cleared', mode='lines')
-            sc_pt = np.array(log_parser.data['score_per_train'])
-            if sc_pt.size > 0:
-                plot_sc_pt = go.Scatter(x=list(range(len(sc_pt))), y=sc_pt[:,0], error_y=dict(type='data', array=sc_pt[:, 1], visible=True), name='Score', mode='lines', yaxis='y2')
-            else:
-                plot_sc_pt = go.Scatter(x=[], y=[], error_y=dict(type='data', array=[], visible=True), name='Score', mode='lines', yaxis='y2')
-            layout_pt = go.Layout(
-                title={'text': 'Lines Cleared / Score per Training Session', 'font': {'color': colors['text']}},    
-                plot_bgcolor=colors['background'],
-                paper_bgcolor=colors['background'],
-                font={'color': colors['text']},
-                xaxis={'title': 'Training Session'},
-                yaxis={'title': 'Lines Cleared', 'showgrid': False},
-                yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False})
-
-            fig_pt = go.Figure(data=[plot_lc_pt, plot_sc_pt], layout=layout_pt)
+            fig_pt.data[0]['x'] = list(range(len(line_cleared_pt)))
+            fig_pt.data[0]['y'] = [x[0] for x in line_cleared_pt]
+            fig_pt.data[0]['error_y']['array'] = [x[1] for x in line_cleared_pt]
+            fig_pt.data[1]['x'] = list(range(len(score_pt)))
+            fig_pt.data[1]['y'] = [x[0] for x in score_pt]
+            fig_pt.data[1]['error_y']['array'] = [x[1] for x in score_pt]
 
             loss_train = log_parser.data['training_loss']
             loss_valid = log_parser.data['validation_loss']
-            plot_train = go.Scatter(x=list(range(len(loss_train))), y=loss_train, name='Training Loss', mode='lines')
-            plot_valid = go.Scatter(x=list(range(len(loss_train))), y=loss_valid, name='Validation Loss', mode='lines')
-            layout_loss = go.Layout(
-                title={'text': 'Training / Validation Loss', 'font': {'color': colors['text']}},
-                plot_bgcolor=colors['background'],
-                paper_bgcolor=colors['background'],
-                font={'color': colors['text']})
-            
-            fig_loss = go.Figure(data=[plot_train, plot_valid], layout=layout_loss)
+            fig_loss.data[0]['x'] = list(range(len(loss_train)))           
+            fig_loss.data[0]['y'] = loss_train           
+            fig_loss.data[1]['x'] = list(range(len(loss_valid)))           
+            fig_loss.data[1]['y'] = loss_valid           
 
             data_acc = log_parser.data['data_accumulated']
-            if data_acc:
-                plot_data = go.Scatter(x=list(range(len(data_acc))), y=data_acc, name='Data Accumulated', mode='lines')
-                layout_data = go.Layout(
-                    title={'text': 'Accumulated Training Data', 'font': {'color': colors['text']}},
-                    plot_bgcolor=colors['background'],
-                    paper_bgcolor=colors['background'],
-                    font={'color': colors['text']})
-     
-                fig_data = go.Figure(data=[plot_data], layout=layout_data)
+            fig_data.data[0]['x'] = list(range(len(data_acc))) 
+            fig_data.data[0]['y'] = data_acc
             
         if model_parser.check_update():
             _cols = 4
@@ -174,21 +202,8 @@ def parser_update():
                     )
 
         board_parser.update()
-        d = board_parser.data[::-1,:]
-        colorscale=[[0, 'rgb(100, 100, 100)'], [0.5, 'rgb(0, 0, 0)'], [1, 'rgb(255, 255, 255)']]
-        hmap = go.Heatmap(z=d, hoverinfo='none', colorscale=colorscale, showscale=False, xgap=1, ygap=1)
-        layout_board = go.Layout(
-                plot_bgcolor=colors['background'],
-                paper_bgcolor=colors['background'],
-                font={'color': colors['text']},
-                height=760,
-                width=300,
-                xaxis=dict(visible=False),
-                yaxis=dict(visible=False),
-                margin=dict(l=5, t=5, b=5, r=5),
-                hovermode=False)
-        fig_board = go.Figure(data=[hmap], layout=layout_board)
-        time.sleep(.5)
+        fig_board.data[0]['z'] = board_parser.data[::-1, :]
+        time.sleep(1)
 
 if __name__ == '__main__':
     thread_log = threading.Thread(target=parser_update)
