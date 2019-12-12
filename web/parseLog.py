@@ -47,6 +47,8 @@ class Parser:
                 'validation loss:\s*(?P<v_loss>\d*.\d*)\s*'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
                 'Validation data size:\s*(?P<vsize>\d*)'
+        queue_re = 'Not enough training data \((?P<filled>\d*) <' \
+                ' (?P<size>\d*)\).*'
 
         line_cleared = []
         line_cleared_per_train = []
@@ -55,6 +57,9 @@ class Parser:
         data_accumulated = []
         training_loss = []
         validation_loss = []
+        size = 0
+        filled = 0
+        rm_since_last_game = 0
 
         with open(self.filename) as f: 
             lc_avg_tmp = []
@@ -64,6 +69,8 @@ class Parser:
                 match_score_re = re.search(score_re, line)
                 match_train_re = re.search(train_re, line)
                 match_datasize_re = re.search(datasize_re, line)
+                match_queue_re = re.search(queue_re, line)
+                #print(match_queue_re)
                 if match_score_re:
                     d = match_score_re.groupdict()
                     lc = int(d['lines'])
@@ -73,6 +80,7 @@ class Parser:
                     lc_avg_tmp.append(lc)
                     sc_avg_tmp.append(sc)
                     data_accumulated.append(data_accum)
+                    rm_since_last_game = 0
                 elif match_train_re:
                     d = match_train_re.groupdict()
                     tl = float(d['t_loss'])
@@ -84,7 +92,13 @@ class Parser:
                     tsize = int(d['tsize'])
                     vsize = int(d['vsize'])
                     data_accum += (tsize + vsize)
-                if 'proceed to training' in line:
+                elif match_queue_re:
+                    d = match_queue_re.groupdict()
+                    filled = int(d['filled'])
+                    size = int(d['size'])
+                elif 'REMOVING UNUSED' in line:
+                    rm_since_last_game += 1
+                elif 'proceed to training' in line:
                     if lc_avg_tmp:
                         line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
                         lc_avg_tmp.clear()
@@ -117,7 +131,11 @@ class Parser:
                 score_per_train=score_per_train,
                 data_accumulated=data_accumulated,
                 training_loss=training_loss,
-                validation_loss=validation_loss)
+                validation_loss=validation_loss,
+                filled=filled,
+                size=size,
+                rm_since_last_game=rm_since_last_game
+                )
 
 class ModelParser:
     def __init__(self):

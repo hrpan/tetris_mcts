@@ -31,7 +31,7 @@ fig = go.Figure(
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         font={'color': colors['text']},
-        xaxis={'title': 'Episode'},
+        xaxis={'title': 'Episode', 'rangemode': 'tozero'},
         yaxis={'title': 'Lines Cleared', 'showgrid': False, 'rangemode': 'tozero'},
         yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False, 'rangemode': 'tozero'}
     )
@@ -47,9 +47,9 @@ fig_pt = go.Figure(
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         font={'color': colors['text']},
-        xaxis={'title': 'Training Session'},
-        yaxis={'title': 'Lines Cleared', 'showgrid': False},
-        yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False}
+        xaxis={'title': 'Training Session', 'rangemode': 'tozero'},
+        yaxis={'title': 'Lines Cleared', 'showgrid': False, 'rangemode': 'tozero'},
+        yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y', 'showgrid': False, 'rangemode': 'tozero'}
     )
 )
 
@@ -62,7 +62,9 @@ fig_loss=go.Figure(
         title={'text': 'Training / Validation Loss', 'font': {'color': colors['text']}},
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
-        font={'color': colors['text']}
+        font={'color': colors['text']},
+        xaxis={'title': 'Iteration', 'rangemode': 'tozero'},
+        yaxis={'rangemode': 'tozero'}
     )
 )
 
@@ -74,7 +76,9 @@ fig_data = go.Figure(
         title={'text': 'Accumulated Training Data', 'font': {'color': colors['text']}},
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
-        font={'color': colors['text']}
+        font={'color': colors['text']},
+        xaxis={'rangemode': 'tozero'},
+        yaxis={'rangemode': 'tozero'}
     )
 )
 
@@ -98,7 +102,8 @@ fig_board = go.Figure(
 
 fig_weight = [{'data': [], 'layout': {'paper_bgcolor': 'black', 'plot_bgcolor': 'black'}}] 
 
-
+rmslg_str = 'Node removals since last game: {}'
+queue_str = 'Queue usage: {} / {}'
 app.layout = html.Div([
             html.Div([
                 dcc.Graph(id='live-ls', figure=fig),
@@ -112,13 +117,17 @@ app.layout = html.Div([
                 dcc.Store(id='last-w-update', data=0),
             ]),
             html.Div([
-                dcc.Graph(id='live-board', figure=fig_board, config={'displayModeBar': False}),
-            ],
-            style={
-                'borderWidth': '1px',
-                'borderStyle': 'solid',
-                'borderColor': 'white',
-                'width': '305px'}),
+                html.Div([
+                    dcc.Graph(id='live-board', figure=fig_board, config={'displayModeBar': False}),
+                ], className='board'),
+                html.Div([
+                    html.H3('Status:'),
+                    html.Ul(children=[
+                        html.Li(id='live-rmslg', children=rmslg_str.format(0)),
+                        html.Li(id='live-queue', children=queue_str.format(0, 0))
+                    ])
+                ], className='status'),
+            ], className='box'),
             dcc.Interval(id='interval-component', interval=1000, n_intervals=0)
         ])
 
@@ -141,6 +150,15 @@ def update_board(n):
     [Input('last-update', 'data')])
 def update_log_graphs(d):
     return fig, fig_pt, fig_loss, fig_data
+
+@app.callback(
+    [Output('live-rmslg', 'children'), Output('live-queue', 'children')],
+    [Input('last-update', 'data')])
+def update_status(d):
+    rmslg = log_parser.data['rm_since_last_game']
+    filled = log_parser.data['filled']
+    size = log_parser.data['size']
+    return rmslg_str.format(rmslg), queue_str.format(filled, size)
 
 @app.callback(Output('live-weights', 'figure'), [Input('last-w-update', 'data')])
 def update_weight_graphs(d):
