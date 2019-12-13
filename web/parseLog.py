@@ -1,13 +1,16 @@
-import re, sys, os, shutil, time, glob, filecmp
+import re
+import sys
+import os
+import shutil
+import filecmp
 import numpy as np
+
 sys.path.append('../')
-import model.model_pytorch as M
-from datetime import datetime as dt
-from importlib import reload
+
 
 class BoardParser:
     def __init__(self):
-        
+
         self.file = open('../board_output', 'rb')
 
         self.data = None
@@ -15,17 +18,18 @@ class BoardParser:
     def update(self):
 
         s = self.file.read()
-        
+
         if len(s) == 220:
             self.data = np.fromstring(s, dtype=np.int8).reshape(22, 10)
 
         self.file.seek(0)
 
+
 class Parser:
     def __init__(self, filename):
 
         self.filename = filename
-    
+
         self.last_update = -1
 
     def check_update(self):
@@ -37,18 +41,18 @@ class Parser:
             self.parse()
             return True
         return False
-        
-    def parse(self): 
+
+    def parse(self):
         score_re = 'Episode:\s*(?P<episode>\d*)\s*' \
-                'Score:\s*(?P<score>\d*)\s*' \
-                'Lines Cleared:\s*(?P<lines>\d*)'   
+                   'Score:\s*(?P<score>\d*)\s*' \
+                   'Lines Cleared:\s*(?P<lines>\d*)'
         train_re = 'Iteration:\s*(?P<iter>\d*)\s*' \
-                'training loss:\s*(?P<t_loss>\d*.\d*)\s*' \
-                'validation loss:\s*(?P<v_loss>\d*.\d*)\s*'
+                   'training loss:\s*(?P<t_loss>\d*.\d*)\s*' \
+                   'validation loss:\s*(?P<v_loss>\d*.\d*)\s*'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
-                'Validation data size:\s*(?P<vsize>\d*)'
+                      'Validation data size:\s*(?P<vsize>\d*)'
         queue_re = 'Not enough training data \((?P<filled>\d*) <' \
-                ' (?P<size>\d*)\).*'
+                   ' (?P<size>\d*)\).*'
 
         line_cleared = []
         line_cleared_per_train = []
@@ -61,7 +65,7 @@ class Parser:
         filled = 0
         rm_since_last_game = 0
 
-        with open(self.filename) as f: 
+        with open(self.filename) as f:
             lc_avg_tmp = []
             sc_avg_tmp = []
             data_accum = 0
@@ -70,7 +74,6 @@ class Parser:
                 match_train_re = re.search(train_re, line)
                 match_datasize_re = re.search(datasize_re, line)
                 match_queue_re = re.search(queue_re, line)
-                #print(match_queue_re)
                 if match_score_re:
                     d = match_score_re.groupdict()
                     lc = int(d['lines'])
@@ -103,21 +106,21 @@ class Parser:
                         line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
                         lc_avg_tmp.clear()
                     else:
-                        line_cleared_per_train.append(line_cleared_per_train[-1]) 
+                        line_cleared_per_train.append(line_cleared_per_train[-1])
                     if sc_avg_tmp:
                         score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
                         sc_avg_tmp.clear()
                     else:
-                        score_per_train.append(score_per_train[-1]) 
+                        score_per_train.append(score_per_train[-1])
             if lc_avg_tmp:
                 line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
             if sc_avg_tmp:
                 score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
 
-            if 'line' in locals() and not 'loss' in line:
+            if 'line' in locals() and 'loss' not in line:
                 flocal = './model_checkpoint'
-                ftarget = '../pytorch_model/model_checkpoint'
-                
+                ftarget = './pytorch_model/model_checkpoint'
+
                 ex_local = os.path.isfile(flocal)
                 ex_target = os.path.isfile(ftarget)
 
@@ -125,7 +128,7 @@ class Parser:
                     shutil.copyfile(ftarget, flocal)
 
         self.data = dict(
-                line_cleared=line_cleared, 
+                line_cleared=line_cleared,
                 line_cleared_per_train=line_cleared_per_train,
                 score=score,
                 score_per_train=score_per_train,
@@ -137,22 +140,25 @@ class Parser:
                 rm_since_last_game=rm_since_last_game
                 )
 
+
 class ModelParser:
     def __init__(self):
 
         self.last_update = -1
-        
+
         self.data = {}
-        
+
     def check_update(self):
 
-        if os.path.isfile('./model_checkpoint'):
-            latest = os.path.getmtime('./model_checkpoint')
+        import model.model_pytorch as M
+
+        flocal = './model_checkpoint'
+        if os.path.isfile(flocal):
+            latest = os.path.getmtime(flocal)
             if latest > self.last_update:
                 self.last_update = latest
-                reload(M)
                 m = M.Model(use_cuda=False)
-                m.load(filename='./model_checkpoint')
+                m.load(filename=flocal)
                 self.parse(m)
                 return True
         elif not self.data:
@@ -168,5 +174,3 @@ class ModelParser:
                 continue
 
             self.data[module[0]] = module[1].weight.data.numpy().ravel()
-        
-        
