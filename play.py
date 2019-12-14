@@ -1,12 +1,10 @@
-from os.path import dirname
-import os, sys
-sys.path.append('../pyTetris')
 from nbTetris import Tetris
 import numpy as np
 import argparse
 from util.gui import GUI
 from util.Data import DataSaver
 from importlib import import_module
+
 
 class ScoreTracker:
     def __init__(self):
@@ -25,20 +23,22 @@ class ScoreTracker:
         return _min, _max, _mean, _std
 
     def printStats(self):
-        sys.stdout.write('\rGames played:%3d    min/max/mean/std:%5.2f(%5.2f)/%5.2f(%5.2f)/%5.2f(%5.2f)/%5.2f(%5.2f)'
-            %(len(self.scores),
-            np.amin(self.scores),
-            np.amin(self.lines),
-            np.amax(self.scores),
-            np.amax(self.lines),
-            np.mean(self.scores),
-            np.mean(self.lines),
-            np.std(self.scores),
-            np.std(self.lines)))
-        sys.stdout.flush()
+        print('\rGames played:{:>3}    min/max/mean/std:{:5.2f}({:5.2f})/{:5.2f}'
+              '({:5.2f})/{:5.2f}({:5.2f})/{:5.2f}({:5.2f})'.format(
+                     len(self.scores),
+                     np.amin(self.scores),
+                     np.amin(self.lines),
+                     np.amax(self.scores),
+                     np.amax(self.lines),
+                     np.mean(self.scores),
+                     np.mean(self.lines),
+                     np.std(self.scores),
+                     np.std(self.lines)),
+              end='', flush=True)
 
     def reset(self):
         self.scores = []
+
 
 """
 ARGUMENTS
@@ -58,7 +58,7 @@ parser.add_argument('--ngames', default=50, type=int, help='Number of episodes t
 parser.add_argument('--printboard', default=False, help='Print board', action='store_true')
 parser.add_argument('--print_board_to_file', default=False, help='Print board to file', action='store_true')
 parser.add_argument('--save', default=False, help='Save self-play episodes', action='store_true')
-parser.add_argument('--save_dir', default='./data/',type=str, help='Directory for save')
+parser.add_argument('--save_dir', default='./data/', type=str, help='Directory for save')
 parser.add_argument('--save_file', default='data', type=str, help='Filename to save')
 args = parser.parse_args()
 
@@ -82,7 +82,7 @@ save_file = args.save_file
 """
 SOME INITS
 """
-env_args = ((22,10), app)
+env_args = ((22, 10), app)
 game = Tetris(*env_args)
 
 if endless:
@@ -90,8 +90,8 @@ if endless:
 
 if agent_type:
     _agent_module = import_module('agents.'+agent_type)
-    Agent = getattr(_agent_module,agent_type)
-    agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args, n_actions = 7)
+    Agent = getattr(_agent_module, agent_type)
+    agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args, n_actions=7)
     agent.update_root(game, ngames)
 else:
     agent = None
@@ -99,7 +99,7 @@ else:
 if save:
     saver = DataSaver(save_dir, save_file, cycle)
     saver_all = DataSaver(save_dir, 'tree', cycle)
-    agent.saver = saver_all 
+    agent.saver = saver_all
 
 tracker = ScoreTracker()
 
@@ -107,14 +107,14 @@ if gui:
     G = GUI()
 
 if print_board_to_file:
-    board_output = open('board_output','wb')
+    board_output = open('board_output', 'wb')
 """
 MAIN GAME LOOP
 """
 while True:
     if interactive:
         game.printState()
-        print('Current score:%d'%game.getScore())
+        print('Current score: {}'.format(game.getScore()))
         action = int(input('Play:'))
 
     elif agent:
@@ -125,7 +125,7 @@ while True:
         action = agent.play()
 
         if save:
-            saver.add(ngames,action,agent,game)    
+            saver.add(ngames, action, agent, game)
 
     if gui:
         G.update_canvas(game.getState())
@@ -133,11 +133,11 @@ while True:
     if print_board_to_file:
         board_output.truncate(0)
         board_output.seek(0)
-        board_output.write(game.getState().tostring()) 
+        board_output.write(game.getState().tostring())
         board_output.flush()
 
     game.play(action)
-    
+
     if agent:
         agent.update_root(game, ngames)
 
@@ -150,7 +150,7 @@ while True:
                 break
         elif endless:
             ngames += 1
-            print('Episode: %3d Score: %10d Lines Cleared: %10d'%(ngames, game.getScore(), game.getLines()), flush=True)
+            print('Episode: {:>5} Score: {:>10} Lines Cleared: {:>10}'.format(ngames, game.getScore(), game.getLines()), flush=True)
             game.reset()
             agent.update_root(game, ngames)
         else:
@@ -165,11 +165,9 @@ while True:
                 game.reset()
                 agent.update_root(game, ngames)
 
-sys.stdout.write('\n')
-sys.stdout.flush()
+print(flush=True)
 
-agent.close()     
+agent.close()
 
 if save:
     saver.close()
-
