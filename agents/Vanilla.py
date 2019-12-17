@@ -1,28 +1,30 @@
 from agents.agent import Agent
-from agents.core import select_index, backup_trace, choose_action
+from agents.core import select_trace, backup_trace, policy_max
 
 from random import randint
 
+
 class Vanilla(Agent):
-    def __init__(self, conf, sims, tau=None, env=None, env_args=None, n_actions=7):
+    def __init__(self, **kwargs):
 
-        super().__init__(sims=sims, backend=None, env=env, env_args=env_args, n_actions=n_actions)
+        kwargs['backend'] = None
 
-        self.g_tmp = env(*env_args)
+        super().__init__(**kwargs)
 
-    def mcts(self,root_index):
-        trace = select_index(root_index,self.arrs['child'],self.arrs['node_stats'])
+        self.g_tmp = self.env(*self.env_args)
+
+    def mcts(self, root_index):
+
+        child = self.arrs['child']
+        node_stats = self.arrs['node_stats']
+
+        trace = select_trace(root_index, child, node_stats, policy=policy_max)
 
         leaf_index = trace[-1]
-        #leaf_index = select_index(root_index,self.arrs['child'],self.arrs['child_stats'])
 
         leaf_game = self.game_arr[leaf_index]
 
-        value = leaf_game.getScore() #- self.game_arr[root_index].getScore()
-
         if not leaf_game.end:
-
-            #v, p = self.evaluate_state(leaf_game.getState())
 
             _g = self.g_tmp
             _g.copy_from(leaf_game)
@@ -38,10 +40,9 @@ class Vanilla(Agent):
                 _g.play(i)
                 _n = self.new_node(_g)
 
-                self.arrs['child'][leaf_index][i] = _n
-                self.arrs['node_stats'][_n][2] = _g.getScore()
-            
-        
-        backup_trace(trace,self.arrs['node_stats'],value)
+                child[leaf_index][i] = _n
+                node_stats[_n][2] = _g.getScore()
+        else:
+            value = leaf_game.getScore()
 
-
+        backup_trace(trace, node_stats, value)
