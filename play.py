@@ -46,6 +46,7 @@ ARGUMENTS
 parser = argparse.ArgumentParser()
 parser.add_argument('--agent_type', default=None, type=str, help='Which agent to use')
 parser.add_argument('--app', default=1, type=int, help='Actions-per-drop')
+parser.add_argument('--benchmark', default=False, help='Benchmark mode for agent', action='store_true')
 parser.add_argument('--cycle', default=0, type=int, help='Number of cycle')
 parser.add_argument('--endless', default=False, help='Endless plays', action='store_true')
 parser.add_argument('--gamma', default=0.9, type=float, help='Discount factor')
@@ -64,6 +65,7 @@ args = parser.parse_args()
 
 agent_type = args.agent_type
 app = args.app
+benchmark = args.benchmark
 cycle = args.cycle
 endless = args.endless
 gamma = args.gamma
@@ -91,7 +93,12 @@ if endless:
 if agent_type:
     _agent_module = import_module('agents.'+agent_type)
     Agent = getattr(_agent_module, agent_type)
-    agent = Agent(mcts_const, mcts_sims, tau=mcts_tau, env=Tetris, env_args=env_args, n_actions=7)
+    agent_args = dict(
+            sims=mcts_sims,
+            env=Tetris,
+            env_args=env_args,
+            benchmark=benchmark)
+    agent = Agent(**agent_args)
     agent.update_root(game, ngames)
 else:
     agent = None
