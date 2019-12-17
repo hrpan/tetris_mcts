@@ -119,7 +119,7 @@ class Parser:
 
             if 'line' in locals() and 'loss' not in line:
                 flocal = './model_checkpoint'
-                ftarget = './pytorch_model/model_checkpoint'
+                ftarget = '../pytorch_model/model_checkpoint'
 
                 ex_local = os.path.isfile(flocal)
                 ex_target = os.path.isfile(ftarget)
