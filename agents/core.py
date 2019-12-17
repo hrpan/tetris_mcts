@@ -24,67 +24,13 @@ def findZero(arr):
 
 
 @jit(**jit_args)
-def select_index(index, child, node_stats):
-
-    trace = []
-
-    while True:
-
-        trace.append(index)
-
-        is_leaf_node = True
-
-        _child_nodes = []
-        for i in range(n_actions):
-            if child[index][i] != 0:
-                _child_nodes.append(child[index][i])
-
-        len_c = len(_child_nodes)
-
-        if len_c == 0:
-            break
-
-        has_unvisited_node = False
-
-        _stats = np.zeros((2, len_c), dtype=np.float32)
-
-        _max = 1.0
-
-        for i in range(len_c):
-            _idx = _child_nodes[i]
-            _stats[0][i] = node_stats[_idx][0]
-            _stats[1][i] = node_stats[_idx][1]
-            _max = max(_max, node_stats[_idx][4])
-            if node_stats[_idx][0] == 0:
-                index = _idx
-                has_unvisited_node = True
-                break
-
-        if has_unvisited_node:
-            continue
-
-        _t = np.sum(_stats[0])
-
-        _c = _max * np.sqrt(np.log(_t) / _stats[0])
-
-        _q = _stats[1] / _stats[0]
-
-        _v = _q + _c
-
-        _a = np.argmax(_v)
-
-        index = _child_nodes[_a]
-
-    return trace
-
-
-@jit(**jit_args)
 def backup_trace(trace, node_stats, value):
 
     for idx in trace:
         v = value - node_stats[idx][2]
+        n, q = node_stats[idx][0], node_stats[idx][1]
         node_stats[idx][0] += 1
-        node_stats[idx][1] += v
+        node_stats[idx][1] = (n * q + v) / (n + 1)
         node_stats[idx][3] += v * v
         node_stats[idx][4] = max(v, node_stats[idx][4])
 
@@ -539,6 +485,19 @@ def policy_gauss(child_nodes, node_stats, curr_reward):
 
 
 @jit(**jit_args)
+def policy_max(child_nodes, node_stats, curr_reward):
+    stats = np.zeros((2, len(child_nodes)), dtype=np.float32)
+    _max = 0.
+    for i, c in enumerate(child_nodes):
+        stats[0][i] = node_stats[c][0]
+        stats[1][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
+        _max = max(_max, node_stats[c][4])
+
+    _q = stats[1] + _max * np.sqrt(np.log(stats[0].sum()) / stats[0])
+
+    return child_nodes[np.argmax(_q)]
+
+@jit(**jit_args)
 def policy_mc(child_nodes, node_stats, curr_reward):
     len_c = len(child_nodes)
     stats = np.zeros((2, len_c), dtype=np.float32)
@@ -567,7 +526,7 @@ def policy_greedy(child_nodes, node_stats, curr_reward):
 
 
 @jit(**jit_args)
-def select_trace(index, child, node_stats, policy=policy_clt):
+def select_trace(index, child, node_stats, policy=policy_clt, low=1):
 
     trace = []
 
@@ -585,7 +544,7 @@ def select_trace(index, child, node_stats, policy=policy_clt):
 
         r = node_stats[index][2]
 
-        index = check_low(_child_nodes, node_stats)
+        index = check_low(_child_nodes, node_stats, n=low)
 
         if not index:
             index = policy(_child_nodes, node_stats, r)
