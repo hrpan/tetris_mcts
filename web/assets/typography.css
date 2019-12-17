@@ -1,0 +1,23 @@
+body {
+    font-family: helvetica;
+    background-color: #000000;
+}
+h1, h2, h3, h4, h5, h6, li {
+    color: #cccccc;
+}
+
+.box{
+    display: flex;
+}
+
+.board{
+    width: 305px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #FFFFFF;
+}
+
+.status{
+    flex-grow: 1;
+    margin: 5%;
+}
