@@ -7,13 +7,11 @@ eps = 1e-7
 
 class ValueSim(Agent):
 
-    def __init__(self, conf, sims, tau=None, backend='pytorch', env=None, env_args=None, backup_alpha=0.01, n_actions=7):
+    def __init__(self, **kwargs):
 
-        super().__init__(sims=sims,backend=backend,env=env, env_args=env_args, n_actions=n_actions)
+        super().__init__(**kwargs)
 
-        self.g_tmp = env(*env_args)
-
-        self.backup_alpha = backup_alpha
+        self.g_tmp = self.env(*self.env_args)
 
     def mcts(self,root_index):
 
