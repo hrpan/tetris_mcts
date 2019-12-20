@@ -246,22 +246,20 @@ def parser_update():
         if model_parser.check_update():
             _cols = 4
             d = model_parser.data
-            fig_weight = make_subplots(rows=ceil(len(d) / _cols), cols=_cols)
-            idx = 0
-            for k, v in d.items():
+            _fig_weight = make_subplots(rows=ceil(len(d) / _cols), cols=_cols)
+            for idx, (k, v) in enumerate(d.items()):
                 r, c = divmod(idx, _cols)
                 h = go.Histogram(x=v, name=k)
-                fig_weight.add_trace(h, row=r+1, col=c+1)
-                idx += 1
-            fig_weight.update_layout(
+                _fig_weight.add_trace(h, row=r+1, col=c+1)
+            _fig_weight.update_layout(
                     title={'text': 'Weight Distribution',
                            'font': {'color': colors['text']}},
                     plot_bgcolor=colors['background'],
                     paper_bgcolor=colors['background'],
                     font={'color': colors['text']},
-                    height=ceil(idx / _cols) * 400
+                    height=(r + 1) * 400
                     )
-
+            fig_weight = _fig_weight
         board_parser.update()
         fig_board.data[0]['z'] = board_parser.data[::-1, :]
         time.sleep(1)
