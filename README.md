@@ -89,7 +89,7 @@ However, such handcrafted rewards can bias your agents toward the target you set
 * tensorflow==1.14.0 (not supported anymore, use PyTorch and caffe2)
 
 You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris)
-and modify the `sys.path.append` in `play.py` to include the path of pyTetris.
+and add `<path-to-pyTetris>` to `PYTHONPATH` or just copy `nbTetris.py` to the same directory of `play.py`.
 
 ## How to run it?
 
@@ -99,6 +99,7 @@ and modify the `sys.path.append` in `play.py` to include the path of pyTetris.
 * `tools/plot_score.py` script for plotting the entropy curve <br> (e.g. `python tools/plot_entropy.py --data_paths data/self1/data*`)
 * `tools/plot_loss.py` script for plotting the loss curve <br> (e.g. `python tools/plot_loss.py data/loss`)
 * `tools/replay.py` GUI for replaying <br> (e.g. `python tools/replay.py --data_paths data/self1/data1`)
+* `web/web_dash.py` A simple plotly based web app for monitoring 
 
 The default routine is written in `cycle.sh`, if you are unsure what to do simply use `./cycle.sh` and things should get going.
 
