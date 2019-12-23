@@ -8,6 +8,7 @@ import torch.utils.data as D
 #import onnx
 import os, subprocess
 import numpy as np
+import math 
 from collections import defaultdict
 from caffe2.python import workspace
 IMG_H, IMG_W, IMG_C = (22, 10, 1)
@@ -56,7 +57,7 @@ class Net(nn.Module):
 
         kernel_size = 3
         stride = 1
-        filters = 32
+        filters = 64
 
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
         #self.bn1 = nn.BatchNorm2d(filters)
@@ -83,8 +84,8 @@ class Net(nn.Module):
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=1e3, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=10, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=6, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=8, std=.1)
 
     def forward(self, x):
         #x = self.bn1(F.relu(self.conv1(x)))
@@ -101,11 +102,11 @@ class Net(nn.Module):
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
-        value = torch.abs(self.fc_v(x))
-        #value = torch.exp(self.fc_v(x))
+        #value = torch.abs(self.fc_v(x))
+        value = torch.exp(self.fc_v(x))
         #value = self.fc_v(x)
         var = torch.exp(self.fc_var(x))
-        #var = torch.abs(self.fc_var(x)) + eps
+        #var = torch.abs(self.fc_var(x))
         #var = F.elu(self.fc_var(x)) + 2
         return value, var, policy
 
@@ -141,11 +142,10 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-5, eps=1e-3)
         #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3, weight_decay=1e-2)
         #self.optimizer = optim.Adamax(self.model.parameters(), lr=1e-3)
         #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
 
@@ -239,14 +239,15 @@ class Model:
         self.model.eval()
 
         result = []
+        d_size = len(batch[0])
         with torch.no_grad():
-            for c in range(len(batch[0]) // chunksize + 1):
+            for c in range((d_size + chunksize - 1) // chunksize):
                 b = [d[c * chunksize: (c + 1) * chunksize] for d in batch]
                 losses = self._loss(b)
                 r = [l.item() * len(b[0]) for l in losses]
                 result.append(r)
 
-        result = (np.sum(result, axis=0) / len(batch[0])).tolist()
+        result = (np.sum(result, axis=0) / d_size).tolist()
 
         if self.ewc:
             result.append(self.compute_ewc_loss().item())
