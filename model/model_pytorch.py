@@ -8,7 +8,7 @@ import torch.utils.data as D
 #import onnx
 import os, subprocess
 import numpy as np
-import math 
+import math
 from collections import defaultdict
 from caffe2.python import workspace
 IMG_H, IMG_W, IMG_C = (22, 10, 1)
@@ -17,7 +17,7 @@ EXP_PATH = './pytorch_model/'
 
 n_actions = 7
 
-eps = 1e-1
+eps = 1
 
 
 def convOutShape(shape_in, kernel_size, stride):
@@ -57,7 +57,7 @@ class Net(nn.Module):
 
         kernel_size = 3
         stride = 1
-        filters = 64
+        filters = 32
 
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
         #self.bn1 = nn.BatchNorm2d(filters)
@@ -71,9 +71,9 @@ class Net(nn.Module):
         #self.bn3 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
 
-        self.conv4 = nn.Conv2d(filters, filters, kernel_size, stride)
+        #self.conv4 = nn.Conv2d(filters, filters, kernel_size, stride)
         #self.bn4 = nn.BatchNorm2d(filters)
-        _shape = convOutShape(_shape, kernel_size, stride)
+        #_shape = convOutShape(_shape, kernel_size, stride)
 
         flat_in = _shape[0] * _shape[1] * filters
 
@@ -84,8 +84,8 @@ class Net(nn.Module):
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=6, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=8, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=7, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=10, std=.1)
 
     def forward(self, x):
         #x = self.bn1(F.relu(self.conv1(x)))
@@ -95,7 +95,7 @@ class Net(nn.Module):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
+        #x = F.relu(self.conv4(x))
         x = x.view(x.shape[0], -1)
 
         x = F.relu(self.fc1(x))
@@ -142,8 +142,8 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-5, eps=1e-3)
-        #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-3, weight_decay=1e-2)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-1)
+        #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4, eps=1e-3, weight_decay=1e-2)
         #self.optimizer = optim.Adamax(self.model.parameters(), lr=1e-3)
         #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
         self.scheduler = None
@@ -195,11 +195,11 @@ class Model:
 
         _v, _var, _p = self.model(state)
         if self.loss_type == 'mle':
-            loss = (weight * self.l_func(_var, _v, variance, value)).mean()
-            return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
+            loss = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
+            return defaultdict(float, loss=loss[1], loss_std=loss[0])
         elif self.loss_type == 'kldiv':
-            loss = self.l_func(_var, _v, variance, value).mean()
-            return loss, torch.FloatTensor([0]), torch.FloatTensor([0]), torch.FloatTensor([0])
+            loss = torch.std_mean(self.l_func(_var, _v, variance, value))
+            return defaultdict(float, loss=loss[1], loss_std=loss[0])
         else:
             loss_v = self.l_func(_v, value)
 
@@ -222,7 +222,7 @@ class Model:
 
             loss = loss_v + loss_var + loss_p
 
-            return loss, loss_v, loss_var, loss_p
+            return defaultdict(float, loss=loss, loss_v=loss_v, loss_var=loss_var, loss_p=loss_p)
 
     def compute_ewc_loss(self):
 
@@ -238,21 +238,37 @@ class Model:
 
         self.model.eval()
 
-        result = []
+        result_tmp = defaultdict(list)
+        result = defaultdict(float)
         d_size = len(batch[0])
         with torch.no_grad():
             for c in range((d_size + chunksize - 1) // chunksize):
                 b = [d[c * chunksize: (c + 1) * chunksize] for d in batch]
                 losses = self._loss(b)
-                r = [l.item() * len(b[0]) for l in losses]
-                result.append(r)
+                result_tmp['bsize'].append(len(b[0]))
+                for k, v in losses.items():
+                    result_tmp[k].append(v.item())
 
-        result = (np.sum(result, axis=0) / d_size).tolist()
+        b = np.array(result_tmp['bsize'])
+        l = np.array(result_tmp['loss'])
+        l_combined = np.sum(l * b) / d_size
+        result['loss'] = l_combined
+
+        if 'loss_std' in result_tmp:
+            l_std = np.array(result_tmp['loss_std'])
+            l_sq = (b - 1) * l_std ** 2 / b + l ** 2
+            l_sq_combined = np.sum(l_sq * b) / d_size
+            l_std_combined = ((l_sq_combined - l_combined ** 2) * d_size / (d_size - 1) ) ** 0.5
+            result['loss_std'] = l_std_combined
+
+        for k in result_tmp:
+            if k == 'loss' or k == 'loss_std':
+                continue
+            tmp = np.array(result_tmp[k])
+            result[k] = np.sum(tmp * b) / b.sum()
 
         if self.ewc:
-            result.append(self.compute_ewc_loss().item())
-        else:
-            result.append(0)
+            result['loss_ewc'] = self.compute_ewc_loss().item()
 
         return result
 
@@ -266,9 +282,10 @@ class Model:
 
         if self.ewc:
             ewc_loss = self.compute_ewc_loss()
-            l = losses[0] + ewc_loss
-        else:
-            l = losses[0]
+            losses['loss'] = losses['loss'] + ewc_loss
+            losses['loss_ewc'] = ewc_loss
+
+        l = losses['loss']
 
         l.backward()
         #norm = 0.
@@ -284,13 +301,7 @@ class Model:
 
         self.optimizer.step()
 
-        result = [l.item() for l in losses]
-
-        if self.ewc:
-            result.append(ewc_loss.item())
-            result[0] += ewc_loss.item()
-        else:
-            result.append(0)
+        result = {k: v.item() for k, v in losses.items()}
 
         return result
 
