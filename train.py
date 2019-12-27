@@ -6,6 +6,7 @@ import glob
 import argparse
 import random
 import gc
+from collections import defaultdict
 from util.Data import DataLoader, LossSaver
 from math import ceil
 eps = 0.001
@@ -301,7 +302,7 @@ if early_stopping:
     if not validation or len(v_idx) == 0:
         raise Exception('Early stopping without validation?')
 
-    loss_val_best = 1e10
+    loss_val_best = float('inf')
 
     _epoch = 0
 
@@ -312,7 +313,7 @@ if early_stopping:
 
     while _p < early_stopping_patience:
         
-        loss_avg = [0, 0, 0, 0, 0]
+        loss_avg = defaultdict(float)
 
         for i in range(iters_per_epoch):
             
@@ -320,19 +321,20 @@ if early_stopping:
                 
             _loss = train_step(batch, i)
 
-            for j in range(5):
-                loss_avg[j] += _loss[j]
+            for k in _loss:
+                loss_avg[k] += _loss[k]
 
-        loss_avg = [l / iters_per_epoch for l in loss_avg]
+        for k in _loss:
+            loss_avg[k] /= iters_per_epoch
 
         _epoch += 1
         
-        loss_val = loss_by_chunk(v_idx)
+        loss_val = compute_loss(gen_batch(v_idx))
 
         scheduler_step(metrics=loss_val)
 
-        if loss_val[0] < loss_val_best:
-            loss_val_best = loss_val[0]
+        if loss_val['loss'] < loss_val_best:
+            loss_val_best = loss_val['loss']
             _p = 0  
             m.save(verbose=False)
             suffix = ' <----- current model '
@@ -340,40 +342,54 @@ if early_stopping:
             _p += 1
             suffix = ''
 
-        sys.stdout.write('epoch:%d loss: %.5f/%.5f %s\n' %(_epoch, loss_avg[0], loss_val[0], suffix))
-        sys.stdout.flush()
+        print('epoch:%d loss: %.5f/(%.5f±%.5f) %s' %(_epoch, loss_avg['loss'], loss_val['loss'], loss_val['loss_std'] / len(v_idx) ** 0.5,suffix), flush=True)
 
         if save_loss:
-            loss_history.append([*loss_avg[:4],*loss_val])
+            loss_history.append([
+                loss_avg['loss'],
+                loss_avg['loss_v'],
+                loss_avg['loss_var'],
+                loss_avg['loss_p'],
+                loss_val['loss'],
+                loss_val['loss_v'],
+                loss_val['loss_var'],
+                loss_val['loss_p'],
+                loss_val['loss_ewc']])
 
     loss_history = np.array(loss_history)
 else:
-    loss_val = [0] * 5
     for i in range(iters):
 
         batch = gen_batch(np.random.choice(t_idx, size=batch_size))
 
         if validation and i % val_interval == 0:
-            loss_val = loss_by_chunk(v_idx)
-            scheduler_step(metrics=loss_val[0])
+            loss_val = compute_loss(gen_batch(v_idx))
+            scheduler_step(metrics=loss_val['loss'])
             sys.stdout.write('\n')
 
         loss = train_step(batch,i)
 
-        loss_ma = decay * loss_ma + ( 1 - decay ) * loss[0]
+        loss_ma = decay * loss_ma + ( 1 - decay ) * loss['loss']
 
-        sys.stdout.write('\riter:%d/%d loss: %.5f/%.5f'%(i+1,iters,loss_ma,loss_val[0]))
-        sys.stdout.flush()
+        print('iter:%d/%d loss: %.5f/%.5f(%.5f)'%(i+1,iters,loss_ma,loss_val['loss'], loss_val['loss_std']), end='\r', flush=True)
             
         if save_loss and i % save_interval == 0:
             _idx = i // save_interval
-            loss_history[_idx] = (*loss[:4], *loss_val) 
+            loss_history[_idx] = (
+                loss_avg['loss'],
+                loss_avg['loss_v'],
+                loss_avg['loss_var'],
+                loss_avg['loss_p'],
+                loss_val['loss'],
+                loss_val['loss_v'],
+                loss_val['loss_var'],
+                loss_val['loss_p'],
+                loss_val['loss_ewc'])
 
 if ewc:
     m.compute_fisher(batch_train)
 
-sys.stdout.write('\n')
-sys.stdout.flush()
+print(flush=True)
 
 if not early_stopping:
     if backend == 'tensorflow':
