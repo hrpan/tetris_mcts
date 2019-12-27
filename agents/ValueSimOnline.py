@@ -7,11 +7,12 @@ eps = 1e-7
 
 perr = dict(file=stderr, flush=True)
 
+
 class ValueSimOnline(Agent):
 
     def __init__(self, memory_size=1000000, **kwargs):
 
-        super().__init__(init_nodes=500000, stochastic_inference=False, **kwargs)
+        super().__init__(init_nodes=1000000, stochastic_inference=False, **kwargs)
 
         self.g_tmp = self.env(*self.env_args)
 
@@ -152,36 +153,19 @@ class ValueSimOnline(Agent):
             if m_idx >= self.memory_size:
                 break
 
+        print('{} nodes stored.'.format(m_idx - self.memory_index), **perr)
+
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=5, val_fraction=0.1, patience=50, growth_rate=10000):
+    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=15000):
 
         print('Training...', **perr)
 
         states, values, variance, weights = self.memory
-
         weights = weights / weights[:self.memory_index].mean()
-        #weights /= weights.mean()
         p_dummy = np.empty((batch_size, 7), dtype=np.float32)
         #print('{0:.5f} {1:.5f} {2:.5f} {3:.5f}'.format(variance.mean(), variance.std(), variance.min(), variance.max()))
         #print('{0:.5f} {1:.5f} {2:.5f} {3:.5f}'.format(values.mean(), values.std(), values.min(), values.max()))
-
-        #if len(states) < self.memory_size:
-        #    b_idx = np.random.choice(len(states), size=1024)
-        #    batch = [states[b_idx], values[b_idx], variance[b_idx], p_dummy[b_idx], weights[b_idx]]
-
-        #    sample_loss = self.model.compute_loss(batch)[0]
-
-        #    if sample_loss < loss_threshold:
-        #        sys.stderr.write('Low sample loss ({:.2f} < {:.2f}), collecting more data before training ({} / {}).\n'.format(sample_loss, loss_threshold, len(states), self.memory_size))
-        #        sys.stderr.flush()
-        #        return None
-        #    else:
-        #        sys.stderr.write('High sample loss ({:.2f} > {:.2f}), starting premature training.\n'.format(sample_loss, loss_threshold))
-        #        sys.stderr.flush()
-        #else:
-        #    sys.stderr.write('Enough training data ({} > {}), proceed to training.\n'.format(len(states), self.memory_size))
-        #    sys.stderr.flush()
 
         d_size = self.memory_index
         m_size = min((self.n_trains + 1) * growth_rate, self.memory_size)
@@ -213,18 +197,19 @@ class ValueSimOnline(Agent):
                 b_idx = np.random.choice(d_size - val_size, size=batch_size)
                 batch = [states[b_idx], values[b_idx], variance[b_idx], p_dummy, weights[b_idx]]
                 loss = self.model.train(batch)
-                l_avg += loss[0]
+                l_avg += loss['loss']
             iters += iters_per_val
             l_avg /= iters_per_val
-            l_val = self.model.compute_loss(batch_val)[0]
+            l_val = self.model.compute_loss(batch_val)
+            l_val_mean, l_val_std = l_val['loss'], l_val['loss_std'] / val_size ** 0.5
             #self.model.update_scheduler()
-            if l_val < l_val_min:
+            if l_val_mean - l_val_min < l_val_std * loss_threshold:
                 self.model.save(verbose=False)
-                l_val_min = l_val
+                l_val_min = min(l_val_min, l_val_mean)
                 fails = 0
             else:
                 fails += 1
-            print('Iteration:{:6d}  training loss:{:.3f} validation loss:{:.3f}'.format(iters, l_avg, l_val), **perr)
+            print('Iteration:{:6d}  training loss:{:.3f} validation loss:{:.3f}±{:.3f}'.format(iters, l_avg, l_val_mean, l_val_std), **perr)
         #self.model.save(verbose=False)
         self.model.load()
         self.model.update_scheduler()
