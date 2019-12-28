@@ -40,7 +40,8 @@ fig = go.Figure(
                 'side': 'right',
                 'overlaying': 'y',
                 'showgrid': False,
-                'rangemode': 'tozero'}
+                'rangemode': 'tozero'},
+        uirevision=True
     )
 )
 
@@ -64,14 +65,17 @@ fig_pt = go.Figure(
                'showgrid': False,
                'rangemode': 'tozero'},
         yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y',
-                'showgrid': False, 'rangemode': 'tozero'}
+                'showgrid': False, 'rangemode': 'tozero'},
+        uirevision=True
     )
 )
 
 fig_loss = go.Figure(
     data=[
         go.Scatter(x=[], y=[], name='Training Loss', mode='lines'),
-        go.Scatter(x=[], y=[], name='Validation Loss', mode='lines')
+        go.Scatter(x=[], y=[],
+            error_y=dict(type='data', array=[], visible=True),
+            name='Validation Loss', mode='lines')
     ],
     layout=go.Layout(
         title={'text': 'Training / Validation Loss',
@@ -80,7 +84,8 @@ fig_loss = go.Figure(
         paper_bgcolor=colors['background'],
         font={'color': colors['text']},
         xaxis={'title': 'Iteration', 'rangemode': 'tozero'},
-        yaxis={'rangemode': 'tozero'}
+        yaxis={'rangemode': 'tozero'},
+        uirevision=True
     )
 )
 
@@ -95,7 +100,8 @@ fig_data = go.Figure(
         paper_bgcolor=colors['background'],
         font={'color': colors['text']},
         xaxis={'rangemode': 'tozero'},
-        yaxis={'rangemode': 'tozero'}
+        yaxis={'rangemode': 'tozero'},
+        uirevision=True
     )
 )
 
@@ -121,8 +127,17 @@ fig_board = go.Figure(
     ),
 )
 
-fig_weight = [{'data': [],
-               'layout': {'paper_bgcolor': 'black', 'plot_bgcolor': 'black'}}]
+fig_weight = go.Figure(
+    data=[],
+    layout=go.Layout(
+        title={'text': 'Weight Distribution',
+               'font': {'color': colors['text']}},
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']},
+        height=400
+    )
+)
 
 rmslg_str = 'Node removals since last game: {}'
 queue_str = 'Queue usage: {} / {}'
@@ -234,10 +249,12 @@ def parser_update():
 
             loss_train = log_parser.data['training_loss']
             loss_valid = log_parser.data['validation_loss']
+            loss_valid_err = log_parser.data['validation_loss_err']
             fig_loss.data[0]['x'] = list(range(len(loss_train)))
             fig_loss.data[0]['y'] = loss_train
             fig_loss.data[1]['x'] = list(range(len(loss_valid)))
             fig_loss.data[1]['y'] = loss_valid
+            fig_loss.data[1]['error_y']['array'] = loss_valid_err
 
             data_acc = log_parser.data['data_accumulated']
             fig_data.data[0]['x'] = list(range(len(data_acc)))

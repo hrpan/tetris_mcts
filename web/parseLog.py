@@ -48,7 +48,7 @@ class Parser:
                    'Lines Cleared:\s*(?P<lines>\d*)'
         train_re = 'Iteration:\s*(?P<iter>\d*)\s*' \
                    'training loss:\s*(?P<t_loss>\d*.\d*)\s*' \
-                   'validation loss:\s*(?P<v_loss>\d*.\d*)\s*'
+                   'validation loss:\s*(?P<v_loss>\d*.\d*)±(?P<v_loss_err>\d*.\d*)'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
                       'Validation data size:\s*(?P<vsize>\d*)'
         queue_re = 'Not enough training data \((?P<filled>\d*) <' \
@@ -61,6 +61,7 @@ class Parser:
         data_accumulated = []
         training_loss = []
         validation_loss = []
+        validation_loss_err = []
         size = 0
         filled = 0
         rm_since_last_game = 0
@@ -86,10 +87,9 @@ class Parser:
                     rm_since_last_game = 0
                 elif match_train_re:
                     d = match_train_re.groupdict()
-                    tl = float(d['t_loss'])
-                    vl = float(d['v_loss'])
-                    training_loss.append(tl)
-                    validation_loss.append(vl)
+                    training_loss.append(float(d['t_loss']))
+                    validation_loss.append(float(d['v_loss']))
+                    validation_loss_err.append(float(d['v_loss_err']))
                 elif match_datasize_re:
                     d = match_datasize_re.groupdict()
                     tsize = int(d['tsize'])
@@ -135,6 +135,7 @@ class Parser:
                 data_accumulated=data_accumulated,
                 training_loss=training_loss,
                 validation_loss=validation_loss,
+                validation_loss_err=validation_loss_err,
                 filled=filled,
                 size=size,
                 rm_since_last_game=rm_since_last_game
