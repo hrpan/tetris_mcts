@@ -60,16 +60,16 @@ class Net(nn.Module):
         filters = 32
 
         self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
-        #self.bn1 = nn.BatchNorm2d(filters)
+        self.bn1 = nn.BatchNorm2d(filters)
         _shape = convOutShape((22, 10), kernel_size, stride)
 
         self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
-        #self.bn2 = nn.BatchNorm2d(filters)
+        self.bn2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
 
-        self.conv3 = nn.Conv2d(filters, filters, kernel_size, stride)
+        #self.conv3 = nn.Conv2d(filters, filters, kernel_size, stride)
         #self.bn3 = nn.BatchNorm2d(filters)
-        _shape = convOutShape(_shape, kernel_size, stride)
+        #_shape = convOutShape(_shape, kernel_size, stride)
 
         #self.conv4 = nn.Conv2d(filters, filters, kernel_size, stride)
         #self.bn4 = nn.BatchNorm2d(filters)
@@ -84,17 +84,17 @@ class Net(nn.Module):
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=7, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=10, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=1e3, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=1e4, std=.1)
 
     def forward(self, x):
-        #x = self.bn1(F.relu(self.conv1(x)))
-        #x = self.bn2(F.relu(self.conv2(x)))
+        x = self.bn1(F.relu(self.conv1(x)))
+        x = self.bn2(F.relu(self.conv2(x)))
         #x = self.bn3(F.relu(self.conv3(x)))
         #x = self.bn4(F.relu(self.conv4(x)))
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        #x = F.relu(self.conv1(x))
+        #x = F.relu(self.conv2(x))
+        #x = F.relu(self.conv3(x))
         #x = F.relu(self.conv4(x))
         x = x.view(x.shape[0], -1)
 
@@ -103,11 +103,10 @@ class Net(nn.Module):
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
         #value = torch.abs(self.fc_v(x))
-        value = torch.exp(self.fc_v(x))
+        value = F.softplus(self.fc_v(x))
         #value = self.fc_v(x)
-        var = torch.exp(self.fc_var(x))
         #var = torch.abs(self.fc_var(x))
-        #var = F.elu(self.fc_var(x)) + 2
+        var = F.softplus(self.fc_var(x))
         return value, var, policy
 
 
@@ -142,10 +141,8 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-1)
-        #self.optimizer = optim.AdamW(self.model.parameters(), lr=1e-4, eps=1e-3, weight_decay=1e-2)
-        #self.optimizer = optim.Adamax(self.model.parameters(), lr=1e-3)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
 
@@ -194,6 +191,7 @@ class Model:
             weight = weight.cuda()
 
         _v, _var, _p = self.model(state)
+        #print(_var.min().item(), variance.min().item(), flush=True)
         if self.loss_type == 'mle':
             loss = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
             return defaultdict(float, loss=loss[1], loss_std=loss[0])
