@@ -127,7 +127,7 @@ class ValueSimOnline(Agent):
             for arr in arrs:
                 arr[idx].fill(0)
 
-    def store_nodes(self, nodes, min_visits=50):
+    def store_nodes(self, nodes, min_visits=20):
 
         print('Storing unused nodes...', **perr)
 
@@ -157,15 +157,13 @@ class ValueSimOnline(Agent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=15000):
+    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=10000, max_iters=100000):
 
         print('Training...', **perr)
 
         states, values, variance, weights = self.memory
         weights = weights / weights[:self.memory_index].mean()
         p_dummy = np.empty((batch_size, 7), dtype=np.float32)
-        #print('{0:.5f} {1:.5f} {2:.5f} {3:.5f}'.format(variance.mean(), variance.std(), variance.min(), variance.max()))
-        #print('{0:.5f} {1:.5f} {2:.5f} {3:.5f}'.format(values.mean(), values.std(), values.min(), values.max()))
 
         d_size = self.memory_index
         m_size = min((self.n_trains + 1) * growth_rate, self.memory_size)
@@ -188,10 +186,9 @@ class ValueSimOnline(Agent):
 
         print('Training data size: {}    Validation data size: {}'.format(d_size-val_size, val_size), **perr)
 
-        iters = 0
+        iters = fails = 0
         l_val_min = float('inf')
-        fails = 0
-        while fails < patience:
+        while fails < patience and iters < max_iters:
             l_avg = 0
             for it in range(iters_per_val):
                 b_idx = np.random.choice(d_size - val_size, size=batch_size)
