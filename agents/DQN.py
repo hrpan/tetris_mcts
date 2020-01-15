@@ -5,7 +5,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 from random import random, randint
 from copy import deepcopy
-from math import floor
 
 
 class Model(nn.Module):
@@ -144,15 +143,16 @@ class DQN:
         si, a, r, sf, end = [x[idx] for x in self.memory]
         qi = self.model(torch.from_numpy(si))
 
-        if self.target:
-            qf = self.target_model(torch.from_numpy(sf))
-            self.target_steps = (self.target_steps + 1) % self.target_update_steps
-            if self.target_steps == 0:
-                self.save_model()
-                self.target_model = deepcopy(self.model)
+        with torch.no_grad():
+            if self.target:
+                qf = self.target_model(torch.from_numpy(sf))
+                self.target_steps = (self.target_steps + 1) % self.target_update_steps
+                if self.target_steps == 0:
+                    self.save_model()
+                    self.target_model = deepcopy(self.model)
 
-        else:
-            qf = self.model(torch.from_numpy(sf))
+            else:
+                qf = self.model(torch.from_numpy(sf))
 
         if self.distributional:
             gamma = self.gamma
@@ -163,18 +163,22 @@ class DQN:
             qf_exp = prob_to_exp(qf, atoms, vmin, vmax)
             qf_max_action = qf_exp.argmax(dim=1)
             y = torch.zeros(qi.shape)
-            loss = torch.tensor(0)
-            for i in range(self.batch_size):
-                for atom in range(atoms):
-                    lb = r[i] + gamma * (atom * delta + vmin)
-                    ub = lb + delta * gamma
-                    lb_bin = (lb - vmin) / delta
-                    ub_bin = (ub - vmin) / delta
 
-                    _p = qf[i, qf_max_action[i], atom]
-                    fraction = (floor(ub_bin) - lb_bin) / gamma
-                    y[i, a[i], int(floor(lb_bin))] += _p * fraction
-                    y[i, a[i], int(floor(ub_bin))] += _p * (1 - fraction)
+            lb = gamma * (np.tile(np.arange(atoms), (self.batch_size, 1)) * delta + vmin) + np.expand_dims(r, -1)
+            lb_bin = (lb - vmin) / delta
+            lb_bin_fl = np.floor(lb_bin).astype(np.int)
+            ub_bin_fl = np.floor(lb_bin + gamma).astype(np.int)
+            fraction = (ub_bin_fl - lb_bin) / gamma
+
+            for i in range(self.batch_size):
+                _lb_bin_fl = lb_bin_fl[i]
+                _ub_bin_fl = ub_bin_fl[i]
+                _p = qf[i, qf_max_action[i]].numpy()
+                _pf = _p * fraction[i]
+                _pfc = _p - _pf
+                for atom in range(atoms):
+                    y[i, a[i], _lb_bin_fl[atom]] += _pf[atom]
+                    y[i, a[i], _ub_bin_fl[atom]] += _pfc[atom]
             loss = - (y * torch.log(qi)).sum() / self.batch_size
         else:
             qf = qf.max(1)[0]
