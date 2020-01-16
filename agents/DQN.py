@@ -28,9 +28,9 @@ class Model(nn.Module):
 class DistModel(nn.Module):
     def __init__(self, atoms=50):
         super(DistModel, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3)
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=3)
-        self.fc1 = nn.Linear(3456, 128)
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=3)
+        self.conv2 = nn.Conv2d(16, 16, kernel_size=3)
+        self.fc1 = nn.Linear(1728, 128)
         self.fc_v = nn.Linear(128, 7 * atoms)
         self.atoms = atoms
 
@@ -164,21 +164,25 @@ class DQN:
             qf_max_action = qf_exp.argmax(dim=1)
             y = torch.zeros(qi.shape)
 
+            r_bin = np.clip(np.floor((r - vmin) / delta).astype(np.int), 0, atoms - 1)
             lb = gamma * (np.tile(np.arange(atoms), (self.batch_size, 1)) * delta + vmin) + np.expand_dims(r, -1)
             lb_bin = (lb - vmin) / delta
-            lb_bin_fl = np.floor(lb_bin).astype(np.int)
-            ub_bin_fl = np.floor(lb_bin + gamma).astype(np.int)
+            lb_bin_fl = np.clip(np.floor(lb_bin).astype(np.int), 0, atoms - 1)
+            ub_bin_fl = np.clip(np.floor(lb_bin + gamma).astype(np.int), 0, atoms - 1)
             fraction = (ub_bin_fl - lb_bin) / gamma
 
             for i in range(self.batch_size):
-                _lb_bin_fl = lb_bin_fl[i]
-                _ub_bin_fl = ub_bin_fl[i]
-                _p = qf[i, qf_max_action[i]].numpy()
-                _pf = _p * fraction[i]
-                _pfc = _p - _pf
-                for atom in range(atoms):
-                    y[i, a[i], _lb_bin_fl[atom]] += _pf[atom]
-                    y[i, a[i], _ub_bin_fl[atom]] += _pfc[atom]
+                if end[i]:
+                    y[i, a[i], r_bin[i]] = 1
+                else:
+                    _lb_bin_fl = lb_bin_fl[i]
+                    _ub_bin_fl = ub_bin_fl[i]
+                    _p = qf[i, qf_max_action[i]].numpy()
+                    _pf = _p * fraction[i]
+                    _pfc = _p - _pf
+                    for atom in range(atoms):
+                        y[i, a[i], _lb_bin_fl[atom]] += _pf[atom]
+                        y[i, a[i], _ub_bin_fl[atom]] += _pfc[atom]
             loss = - (y * torch.log(qi)).sum() / self.batch_size
         else:
             qf = qf.max(1)[0]
