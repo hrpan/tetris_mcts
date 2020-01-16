@@ -2,11 +2,11 @@
 
 My personal project for the love of Tetris.
 
-See the agent in action [here](https://www.youtube.com/watch?v=EALo2GfZuYU)!
-
 (Warning: Codes are a hot mess riddled with inconsistent styles and unclear namings, read them at your own risk.)
 
 (Warning2: I have been experimenting with a lot of things lately, so some of the features may not work properly. If you intend to reproduce my earlier results, make sure you check out my previous commits.)
+
+![](demo/test.gif)
 
 ## Major update
 
@@ -106,6 +106,9 @@ The default routine is written in `cycle.sh`, if you are unsure what to do simpl
 
 
 ## Results
+
+See the agent in action [here](https://www.youtube.com/watch?v=EALo2GfZuYU)!
+
 In the default routine (`cycle.sh`), each iteration consists of 100 games with 300 MCTS simulations per move to generate the 
 training data and 1 benchmark game with 1500 MCTS simulations per move to test the performance of the agent.
 
