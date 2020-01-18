@@ -10,7 +10,7 @@ perr = dict(file=stderr, flush=True)
 
 class ValueSimOnline(Agent):
 
-    def __init__(self, memory_size=1000000, **kwargs):
+    def __init__(self, memory_size=250000, **kwargs):
 
         super().__init__(init_nodes=1000000, stochastic_inference=False, **kwargs)
 
@@ -157,7 +157,7 @@ class ValueSimOnline(Agent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=10000, max_iters=100000):
+    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000):
 
         print('Training...', **perr)
 
@@ -167,8 +167,8 @@ class ValueSimOnline(Agent):
 
         d_size = self.memory_index
         m_size = min((self.n_trains + 1) * growth_rate, self.memory_size)
-        if d_size > m_size:
-            print('Enough training data ({} > {}), proceed to training.'.format(d_size, m_size), **perr)
+        if d_size >= m_size:
+            print('Enough training data ({} >= {}), proceed to training.'.format(d_size, m_size), **perr)
         else:
             print('Not enough training data ({} < {}), collecting more data.'.format(d_size, m_size), **perr)
             return None
