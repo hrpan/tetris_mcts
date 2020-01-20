@@ -168,7 +168,7 @@ app.layout = html.Div([
                     ])
                 ], className='status'),
             ], className='box'),
-            dcc.Interval(id='interval-component', interval=1000, n_intervals=0)
+            dcc.Interval(id='interval-component', interval=250, n_intervals=0)
         ])
 
 
@@ -279,7 +279,7 @@ def parser_update():
             fig_weight = _fig_weight
         board_parser.update()
         fig_board.data[0]['z'] = board_parser.data[::-1, :]
-        time.sleep(1)
+        time.sleep(0.25)
 
 
 if __name__ == '__main__':
