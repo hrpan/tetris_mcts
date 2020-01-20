@@ -64,7 +64,7 @@ class DQN:
                  target_update_steps=100,
                  distributional=True,
                  distributional_atoms=50,
-                 distributional_vmax=10000,
+                 distributional_vmax=2500,
                  distributional_vmin=0,
                  **kwargs):
 
@@ -238,6 +238,11 @@ class DQN:
             self.train_step()
         if self.memory_index % 1000 == 0:
             print('Memory index: {:10}    Epsilon: {:5.3f}'.format(self.memory_index, self.eps), flush=True)
+
+    def load_model(self):
+        state_dict = torch.load('./pytorch_model/dqn_ckpt')
+        self.optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+        self.model.load_state_dict(state_dict['model_state_dict'])
 
     def save_model(self):
         torch.save({
