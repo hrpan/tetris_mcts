@@ -1,3 +1,4 @@
+import torch
 import re
 import sys
 import os
@@ -106,12 +107,18 @@ class Parser:
                         line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
                         lc_avg_tmp.clear()
                     else:
-                        line_cleared_per_train.append(line_cleared_per_train[-1])
+                        if line_cleared_per_train:
+                            line_cleared_per_train.append(line_cleared_per_train[-1])
+                        else:
+                            line_cleared_per_train.append(0)
                     if sc_avg_tmp:
                         score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
                         sc_avg_tmp.clear()
                     else:
-                        score_per_train.append(score_per_train[-1])
+                        if score_per_train:
+                            score_per_train.append(score_per_train[-1])
+                        else:
+                            score_per_train.append(0)
             if lc_avg_tmp:
                 line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
             if sc_avg_tmp:
@@ -143,24 +150,27 @@ class Parser:
 
 
 class ModelParser:
-    def __init__(self):
+    def __init__(self, distributional=True):
 
         self.last_update = -1
 
         self.data = {}
 
+        self.distributional = distributional
+
     def check_update(self):
-
-        import model.model_pytorch as M
-
+        if self.distributional:
+            import model.model_distributional as M
+        else:
+            import model.model_pytorch as M
         flocal = './model_checkpoint'
         if os.path.isfile(flocal):
             latest = os.path.getmtime(flocal)
             if latest > self.last_update:
                 self.last_update = latest
-                m = M.Model(use_cuda=False)
-                m.load(filename=flocal)
-                self.parse(m)
+                state = torch.load(flocal, map_location=torch.device('cpu'))
+                model_state = state['model_state_dict']
+                self.parse_state(model_state)
                 return True
         elif not self.data:
             m = M.Model(use_cuda=False)
@@ -169,9 +179,12 @@ class ModelParser:
         return False
 
     def parse(self, model):
-        self.data = {}
-        for module in model.model.named_modules():
-            if not module[0] or not hasattr(module[1], 'weight') or module[1].weight is None:
-                continue
+        self.parse_state(model.state_dict())
 
-            self.data[module[0]] = module[1].weight.data.numpy().ravel()
+    def parse_state(self, model_state):
+        self.data = {}
+        for k, v in model_state.items():
+            if 'weight' in k:
+                k = k.replace('.weight', '')
+                k = k.replace('seq.', '')
+                self.data[k] = v.cpu().numpy().ravel()
