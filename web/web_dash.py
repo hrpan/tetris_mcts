@@ -5,6 +5,7 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 import time
 import threading
+import sys
 from parseLog import Parser, ModelParser, BoardParser
 from dash.dependencies import Input, Output, State
 from math import ceil
@@ -208,9 +209,9 @@ def update_log_graphs(d):
     [Output('live-rmslg', 'children'), Output('live-queue', 'children')],
     [Input('last-update', 'data')])
 def update_status(d):
-    rmslg = log_parser.data['rm_since_last_game']
-    filled = log_parser.data['filled']
-    size = log_parser.data['size']
+    #rmslg = log_parser.data['rm_since_last_game']
+    #filled = log_parser.data['filled']
+    #size = log_parser.data['size']
     return rmslg_str.format(rmslg), queue_str.format(filled, size)
 
 
@@ -220,14 +221,15 @@ def update_weight_graphs(d):
     return fig_weight
 
 
-log_parser = Parser('../log_endless')
+log_parser = Parser('../log_endless_dist')
 model_parser = ModelParser()
 board_parser = BoardParser()
-
+rmslg, filled, size = 0, 0, 0
 
 def parser_update():
     global log_parser
     global fig, fig_pt, fig_loss, fig_data, fig_weight, fig_board
+    global rmslg, filled, size
     while True:
         update = log_parser.check_update()
         if update:
@@ -260,13 +262,17 @@ def parser_update():
             fig_data.data[0]['x'] = list(range(len(data_acc)))
             fig_data.data[0]['y'] = data_acc
 
+            rmslg = log_parser.data['rm_since_last_game']
+            filled = log_parser.data['filled']
+            size = log_parser.data['size']
+
         if model_parser.check_update():
             _cols = 4
             d = model_parser.data
             _fig_weight = make_subplots(rows=ceil(len(d) / _cols), cols=_cols)
             for idx, (k, v) in enumerate(d.items()):
                 r, c = divmod(idx, _cols)
-                h = go.Histogram(x=v, name=k)
+                h = go.Histogram(x=v, name=k, nbinsx=50)
                 _fig_weight.add_trace(h, row=r+1, col=c+1)
             _fig_weight.update_layout(
                     title={'text': 'Weight Distribution',
@@ -283,6 +289,9 @@ def parser_update():
 
 
 if __name__ == '__main__':
+    distributional = True
+    log_parser = Parser(sys.argv[1])
+    model_parser = ModelParser(distributional)
     thread_log = threading.Thread(target=parser_update)
     thread_log.start()
 
