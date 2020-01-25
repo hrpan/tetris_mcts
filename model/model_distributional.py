@@ -4,18 +4,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils as U
 import torch.utils.data as D
-import os, subprocess
+import os
 import numpy as np
-import math
-from collections import defaultdict
-from caffe2.python import workspace
+from collections import defaultdict, OrderedDict
 IMG_H, IMG_W, IMG_C = (22, 10, 1)
 
 EXP_PATH = './pytorch_model/'
 
 n_actions = 7
-
-eps = 0.01
 
 
 def convOutShape(shape_in, kernel_size, stride):
@@ -39,50 +35,48 @@ class Net(nn.Module):
         stride = 1
         filters = 32
 
-        self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
-        self.bn1 = nn.BatchNorm2d(filters)
         _shape = convOutShape((22, 10), kernel_size, stride)
-
-        self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
-        self.bn2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
+        #_shape = convOutShape(_shape, kernel_size, stride)
 
         flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc1 = 128
-        self.fc1 = nn.Linear(flat_in, n_fc1)
-        flat_out = n_fc1
+        n_fc1 = 512
 
-        self.fc_v = nn.Linear(flat_out, atoms)
+        activation = nn.ReLU()
+
+        self.seq = nn.Sequential(OrderedDict([
+                    ('conv1', nn.Conv2d(1, filters, kernel_size, stride)),
+                    ('act1', activation),
+                    ('bn1', nn.BatchNorm2d(filters)),
+                    ('conv2', nn.Conv2d(filters, filters, kernel_size, stride)),
+                    ('act2', activation),
+                    ('bn2', nn.BatchNorm2d(filters)),
+                    #('conv3', nn.Conv2d(filters, filters, kernel_size, stride)),
+                    #('act3', activation),
+                    #('bn3', nn.BatchNorm2d(filters)),
+                    ('flatten', nn.Flatten()),
+                    ('fc1', nn.Linear(flat_in, n_fc1)),
+                    ('act3', activation),
+                    ('fc_v', nn.Linear(n_fc1, atoms)),
+                ]))
 
     def forward(self, x):
-        act = F.relu
-        x = self.bn1(act(self.conv1(x)))
-        x = self.bn2(act(self.conv2(x)))
-        x = x.view(x.shape[0], -1)
-
-        x = act(self.fc1(x))
-
-        value = F.softmax(self.fc_v(x), 1)
+        x = self.seq(x)
+        value = F.softmax(x, 1)
 
         return value
 
     def log_prob(self, x):
-        act = F.relu
-        x = self.bn1(act(self.conv1(x)))
-        x = self.bn2(act(self.conv2(x)))
-        x = x.view(x.shape[0], -1)
-
-        x = act(self.fc1(x))
-
-        value = F.log_softmax(self.fc_v(x), 1)
+        x = self.seq(x)
+        value = F.log_softmax(x, 1)
 
         return value
 
 
-
 def convert(x):
     return torch.from_numpy(x.astype(np.float32))
+
 
 class Model:
     def __init__(self, training=False, new=True, use_cuda=True, atoms=50):
@@ -99,11 +93,10 @@ class Model:
         self.model = Net(atoms=atoms)
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-4, amsgrad=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-5, amsgrad=True)
         #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
-
 
     def _loss(self, batch):
 
@@ -120,7 +113,7 @@ class Model:
             weight = weight.cuda()
 
         _v = self.model.log_prob(state)
-        loss = torch.std_mean(-weight * (value * _v).sum(dim=1))
+        loss = torch.std_mean(-weight.squeeze() * (value * (_v - value.log())).sum(dim=1))
 
         return defaultdict(float, loss=loss[1], loss_std=loss[0])
 
@@ -135,8 +128,8 @@ class Model:
             for c in range((d_size + chunksize - 1) // chunksize):
                 b = [d[c * chunksize: (c + 1) * chunksize] for d in batch]
                 loss = self._loss(b)
-                ls.append(loss['loss'])
-                stds.append(loss['loss_std'])
+                ls.append(loss['loss'].item())
+                stds.append(loss['loss_std'].item())
                 bs.append(len(b[0]))
 
         b = np.array(bs)
@@ -228,7 +221,7 @@ class Model:
                 print('Export path does not exist, creating a new one...', flush=True)
             os.mkdir(EXP_PATH)
 
-        filename = EXP_PATH + 'dist_model_checkpoint'
+        filename = EXP_PATH + 'model_checkpoint'
 
         full_state = {
                     'model_state_dict': self.model.state_dict(),
@@ -240,10 +233,7 @@ class Model:
 
         torch.save(full_state, filename)
 
-
-    def load(self, filename=EXP_PATH + 'dist_model_checkpoint'):
-
-        #filename = EXP_PATH + 'model_checkpoint'
+    def load(self, filename=EXP_PATH + 'model_checkpoint'):
 
         if os.path.isfile(filename):
             print('Loading model...', flush=True)
