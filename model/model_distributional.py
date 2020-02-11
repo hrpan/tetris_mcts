@@ -31,13 +31,13 @@ class Net(nn.Module):
     def __init__(self, atoms=50):
         super(Net, self).__init__()
 
-        kernel_size = 3
+        kernel_size = 4
         stride = 1
         filters = 32
 
         _shape = convOutShape((22, 10), kernel_size, stride)
         _shape = convOutShape(_shape, kernel_size, stride)
-        #_shape = convOutShape(_shape, kernel_size, stride)
+        _shape = convOutShape(_shape, kernel_size, stride)
 
         flat_in = _shape[0] * _shape[1] * filters
 
@@ -48,12 +48,12 @@ class Net(nn.Module):
         self.seq = nn.Sequential(OrderedDict([
                     ('conv1', nn.Conv2d(1, filters, kernel_size, stride)),
                     ('act1', activation),
-                    ('bn1', nn.BatchNorm2d(filters)),
+                    #('bn1', nn.BatchNorm2d(filters)),
                     ('conv2', nn.Conv2d(filters, filters, kernel_size, stride)),
                     ('act2', activation),
-                    ('bn2', nn.BatchNorm2d(filters)),
-                    #('conv3', nn.Conv2d(filters, filters, kernel_size, stride)),
-                    #('act3', activation),
+                    #('bn2', nn.BatchNorm2d(filters)),
+                    ('conv3', nn.Conv2d(filters, filters, kernel_size, stride)),
+                    ('act3', activation),
                     #('bn3', nn.BatchNorm2d(filters)),
                     ('flatten', nn.Flatten()),
                     ('fc1', nn.Linear(flat_in, n_fc1)),
