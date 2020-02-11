@@ -157,11 +157,6 @@ if backend == 'pytorch':
             policy[idx].astype(np.float32, copy=False), 
             np.expand_dims(weights[idx], -1).astype(np.float32, copy=False))
                 
-elif backend == 'tensorflow':
-    raise Exception('Tensorflow not supported anymore, switch to pytorch instead')
-    states = np.expand_dims(np.stack(loader['board'].values),-1)
-    policy = loader.policy
-    values = np.expand_dims(values,-1)
 
 #========================
 """
@@ -243,19 +238,6 @@ if backend == 'pytorch':
         m.v_std = v_std
         m.var_mean = var_mean
         m.var_std = var_std
-elif backend == 'tensorflow':
-    from model.model import Model
-    import tensorflow as tf
-    sess = tf.Session()
-    m = Model()
-    if new:
-        m.build_graph()
-        sess.run(tf.global_variables_initializer())
-    else:
-        m.load(sess)
-    train_step = lambda batch, step: m.train(sess,batch,step)
-    compute_loss = lambda batch: m.compute_loss(sess,batch)
-    scheduler_step = lambda val_loss: None
 #=========================
 
 iters_per_epoch = n_data//batch_size
@@ -392,10 +374,7 @@ if ewc:
 print(flush=True)
 
 if not early_stopping:
-    if backend == 'tensorflow':
-        m.save(sess)
-    elif backend == 'pytorch':
-        m.save()
+    m.save()
 
 
 if save_loss:

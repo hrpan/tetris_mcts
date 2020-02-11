@@ -1,6 +1,5 @@
 from model.model import Model
 from numba import jit, deferred_type
-import tensorflow as tf
 import numpy as np
 import random
 import  sys

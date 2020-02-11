@@ -33,16 +33,7 @@ MODEL INIT
 """
 sys.path.append('./model')
 if inference:
-    if backend == 'tensorflow':
-
-        import tensorflow as tf
-        from model import Model
-
-        sess = tf.Session()
-        m = Model()
-        m.load(sess)
-
-    elif backend == 'pytorch':
+    if backend == 'pytorch':
 
         from model_pytorch import Model
 
@@ -136,12 +127,7 @@ if __name__ == '__main__':
         global data
         policy = data.getPolicy(index)
         if inference:
-            if backend == 'tensorflow':
-                pred = m.inference(sess,[data.getBoard(index)[:,:,None]])
-                value_pred = pred[0][0]
-                policy_pred = pred[1][0]
-                class_pred = np.argmax(pred[2][0])
-            elif backend == 'pytorch':
+            if backend == 'pytorch':
                 pred = m.inference(data.getBoard(index)[None,None,:,:])
                 value_pred = pred[0][0][0]
                 policy_pred = pred[1][0]

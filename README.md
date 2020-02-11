@@ -79,14 +79,18 @@ However, such handcrafted rewards can bias your agents toward the target you set
 
 ## Prerequisite
 
-* numba==0.45.1
+* dash_core_components==1.3.1
 * numpy==1.17.2
-* yattag==1.12.2
-* torch==1.4.0a0+f669214
-* tables==3.5.2
+* dash_html_components==1.0.1
 * matplotlib==3.1.1
+* dash==1.4.1
+* plotly==4.3.0
+* tables==3.5.2
+* yattag==1.12.2
+* numba==0.45.1
+* torch==1.4.0a0+f669214
+* Pillow==7.0.0
 * caffe2==0.8.1
-* tensorflow==1.14.0 (not supported anymore, use PyTorch and caffe2)
 
 You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris)
 and add `<path-to-pyTetris>` to `PYTHONPATH` or just copy `nbTetris.py` to the same directory of `play.py`.
