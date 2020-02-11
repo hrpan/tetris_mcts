@@ -19,10 +19,10 @@ class ValueSimOnline(Agent):
         self.memory_size = memory_size
 
         self.memory = [
-                np.empty((memory_size, 1, 22, 10), dtype=np.float32),
-                np.empty((memory_size, 1), dtype=np.float32),
-                np.empty((memory_size, 1), dtype=np.float32),
-                np.empty((memory_size, 1), dtype=np.float32)
+                np.zeros((memory_size, 1, 22, 10), dtype=np.float32),
+                np.zeros((memory_size, 1), dtype=np.float32),
+                np.zeros((memory_size, 1), dtype=np.float32),
+                np.zeros((memory_size, 1), dtype=np.float32)
                 ]
 
         self.memory_index = 0
@@ -201,8 +201,9 @@ class ValueSimOnline(Agent):
             l_val_mean, l_val_std = l_val['loss'], l_val['loss_std'] / val_size ** 0.5
             #self.model.update_scheduler()
             if l_val_mean - l_val_min < l_val_std * loss_threshold:
-                self.model.save(verbose=False)
-                l_val_min = min(l_val_min, l_val_mean)
+                if l_val_mean < l_val_min:
+                    self.model.save(verbose=False)
+                    l_val_min = l_val_mean
                 fails = 0
             else:
                 fails += 1
