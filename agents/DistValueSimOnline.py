@@ -7,27 +7,28 @@ from sys import stderr
 eps = 1e-7
 
 perr = dict(file=stderr, flush=True)
+np.seterr(all='raise')
 
 
 class DistValueSimOnline(Agent):
 
-    def __init__(self, atoms=100, vmin=0, vmax=5000, memory_size=250000, init_nodes=1000000, **kwargs):
+    def __init__(self, atoms=50, vmin=0, vmax=2500, memory_size=500000, **kwargs):
 
         self.atoms = atoms
 
-        super().__init__(init_nodes=init_nodes, stochastic_inference=False, **kwargs)
+        super().__init__(stochastic_inference=False, **kwargs)
 
         self.g_tmp = self.env(*self.env_args)
 
         self.memory_size = memory_size
 
         self.memory = [
-                np.empty((memory_size, 1, 22, 10), dtype=np.float32),
-                np.empty((memory_size, atoms), dtype=np.float32),
-                np.empty((memory_size, 1), dtype=np.float32)
+                np.zeros((memory_size, 1, 22, 10), dtype=np.float32),
+                np.zeros((memory_size, atoms), dtype=np.float32),
+                np.zeros((memory_size, 1), dtype=np.float32)
                 ]
 
-        self.arrs['node_dist'] = np.empty((init_nodes, atoms), dtype=np.float32)
+        self.arrs['node_dist'] = np.zeros((len(self.game_arr), atoms), dtype=np.float32)
 
         self.memory_index = 0
 
@@ -102,12 +103,13 @@ class DistValueSimOnline(Agent):
             _idx = _childs[i]
             if _ns[_idx][0] < 1:
                 return False
-            mean, var = mean_variance(_nd[_idx], vmin, vmax)
             _stats[0][i] = _ns[_idx][0] / counter[_idx]
-            _stats[1][i] = mean + _ns[node][2] - root_score
-            _stats[3][i] = mean + _ns[node][2] - root_score
-            _stats[4][i] = var
-
+            _stats[1][i] = _ns[_idx][1] + _ns[_idx][2] - root_score
+            _stats[3][i] = _stats[1][i]
+            _stats[4][i] = _ns[_idx][3]
+        #print(_stats[[0, 1, 4]].astype(np.int))
+        #print(_nd[self.root])
+        #print(mean_variance(_nd[self.root], *self.vrange))
         return _stats
 
     def get_value(self, node=None):
@@ -150,7 +152,7 @@ class DistValueSimOnline(Agent):
             for arr in arrs:
                 arr[idx].fill(0)
 
-    def store_nodes(self, nodes, min_visits=20):
+    def store_nodes(self, nodes, min_visits=50):
 
         print('Storing unused nodes...', **perr)
 
@@ -175,17 +177,20 @@ class DistValueSimOnline(Agent):
             m_idx += 1
             if m_idx >= self.memory_size:
                 break
-
         print('{} nodes stored.'.format(m_idx - self.memory_index), **perr)
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000):
+    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=10000):
 
         print('Training...', **perr)
 
         states, values, weights = self.memory
-        weights = weights / weights[:self.memory_index].mean()
+        try:
+            weights = weights / weights[:self.memory_index].mean()
+        except:
+            np.set_printoptions(threshold=np.inf)
+            print(weights[:self.memory_index], weights[:self.memory_index].mean())
 
         d_size = self.memory_index
         m_size = min((self.n_trains + 1) * growth_rate, self.memory_size)
@@ -194,6 +199,8 @@ class DistValueSimOnline(Agent):
         else:
             print('Not enough training data ({} < {}), collecting more data.'.format(d_size, m_size), **perr)
             return None
+
+        np.savez('./data/memory_dump', states=states[:d_size], values=values[:d_size], weights=weights[:d_size])
 
         self.n_trains += 1
 
@@ -221,12 +228,13 @@ class DistValueSimOnline(Agent):
             l_val_mean, l_val_std = l_val['loss'], l_val['loss_std'] / val_size ** 0.5
             #self.model.update_scheduler()
             if l_val_mean - l_val_min < l_val_std * loss_threshold:
-                self.model.save(verbose=False)
-                l_val_min = min(l_val_min, l_val_mean)
+                if l_val_mean < l_val_min:
+                    self.model.save(verbose=False)
+                    l_val_min = l_val_mean
                 fails = 0
             else:
                 fails += 1
-            print('Iteration:{:6d}  training loss:{:.3f} validation loss:{:.3f}±{:.3f}'.format(iters, l_avg, l_val_mean, l_val_std), **perr)
+            print('Iteration:{:6d}  training loss:{:.5f} validation loss:{:.5f}±{:.5f}'.format(iters, l_avg, l_val_mean, l_val_std), **perr)
         #self.model.save(verbose=False)
         self.model.load()
         self.model.update_scheduler()
