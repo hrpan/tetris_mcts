@@ -5,6 +5,7 @@ import os
 import shutil
 import filecmp
 import numpy as np
+from shutil import copyfile
 
 sys.path.append('../')
 
@@ -71,6 +72,7 @@ class Parser:
             lc_avg_tmp = []
             sc_avg_tmp = []
             data_accum = 0
+            training = False
             for line in f.readlines():
                 match_score_re = re.search(score_re, line)
                 match_train_re = re.search(train_re, line)
@@ -103,6 +105,7 @@ class Parser:
                 elif 'REMOVING UNUSED' in line:
                     rm_since_last_game += 1
                 elif 'proceed to training' in line:
+                    training = True
                     if lc_avg_tmp:
                         line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
                         lc_avg_tmp.clear()
@@ -119,12 +122,14 @@ class Parser:
                             score_per_train.append(score_per_train[-1])
                         else:
                             score_per_train.append(0)
+                elif 'Training complete' in line:
+                    training = False
             if lc_avg_tmp:
                 line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
             if sc_avg_tmp:
                 score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
 
-            if 'line' in locals() and 'loss' not in line:
+            if not training:
                 flocal = './model_checkpoint'
                 ftarget = '../pytorch_model/model_checkpoint'
 
@@ -132,7 +137,7 @@ class Parser:
                 ex_target = os.path.isfile(ftarget)
 
                 if ex_target and ((ex_local and not filecmp.cmp(flocal, ftarget)) or not ex_local):
-                    shutil.copyfile(ftarget, flocal)
+                    copyfile(ftarget, flocal)
 
         self.data = dict(
                 line_cleared=line_cleared,
@@ -159,20 +164,21 @@ class ModelParser:
         self.distributional = distributional
 
     def check_update(self):
-        if self.distributional:
-            import model.model_distributional as M
-        else:
-            import model.model_pytorch as M
         flocal = './model_checkpoint'
         if os.path.isfile(flocal):
             latest = os.path.getmtime(flocal)
             if latest > self.last_update:
+                print('New model found, updating...', flush=True)
                 self.last_update = latest
                 state = torch.load(flocal, map_location=torch.device('cpu'))
                 model_state = state['model_state_dict']
                 self.parse_state(model_state)
                 return True
         elif not self.data:
+            if self.distributional:
+                import model.model_distributional as M
+            else:
+                import model.model_pytorch as M
             m = M.Model(use_cuda=False)
             self.parse(m)
             return True

@@ -61,18 +61,7 @@ class Agent:
 
     def init_model(self):
 
-        if self.backend == 'tensorflow':
-            from model.model import Model
-            import tensorflow as tf
-
-            self.sess = tf.Session()
-
-            self.model = Model()
-            self.model.load(self.sess)
-
-            self.inference = lambda state: self.model.inference(self.sess, state[None, :, :, None])
-
-        elif self.backend == 'pytorch':
+        if self.backend == 'pytorch':
             from model.model_pytorch import Model
             #from model.model_bayesian import Model
             self.model = Model()

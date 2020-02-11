@@ -272,7 +272,7 @@ def parser_update():
             _fig_weight = make_subplots(rows=ceil(len(d) / _cols), cols=_cols)
             for idx, (k, v) in enumerate(d.items()):
                 r, c = divmod(idx, _cols)
-                h = go.Histogram(x=v, name=k, nbinsx=50)
+                h = go.Histogram(x=v, name=k)
                 _fig_weight.add_trace(h, row=r+1, col=c+1)
             _fig_weight.update_layout(
                     title={'text': 'Weight Distribution',
@@ -283,6 +283,7 @@ def parser_update():
                     height=(r + 1) * 400
                     )
             fig_weight = _fig_weight
+            print('Model update done.')
         board_parser.update()
         fig_board.data[0]['z'] = board_parser.data[::-1, :]
         time.sleep(0.25)
