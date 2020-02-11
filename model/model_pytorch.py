@@ -17,7 +17,7 @@ EXP_PATH = './pytorch_model/'
 
 n_actions = 7
 
-eps = 1
+eps = 0.01
 
 
 def convOutShape(shape_in, kernel_size, stride):
@@ -32,30 +32,12 @@ def convOutShape(shape_in, kernel_size, stride):
             (shape_in[1] - kernel_size[1]) // stride[1] + 1)
 
 
-class DenseBlock(nn.Module):
-    def __init__(self, channels_in, growth_rate, depth):
-        super(DenseBlock, self).__init__()
-
-        self.depth = depth
-        self.conv = nn.ModuleList([nn.Conv2d(channels_in + i * growth_rate, growth_rate, 1, 1) for i in range(depth)])
-        self.bn = nn.ModuleList([nn.BatchNorm2d(growth_rate) for i in range(depth)])
-
-    def forward(self, x):
-
-        _x = [x]
-
-        for d in range(self.depth):
-            tmp = self.bn[d](F.relu(self.conv[d](torch.cat(_x, 1))))
-            _x.append(tmp)
-        return tmp
-
-
 class Net(nn.Module):
 
     def __init__(self):
         super(Net, self).__init__()
 
-        kernel_size = 3
+        kernel_size = 4
         stride = 1
         filters = 32
 
@@ -84,28 +66,22 @@ class Net(nn.Module):
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=1e3, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=1e4, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=250, std=.1)
+        torch.nn.init.normal_(self.fc_var.bias, mean=1e3, std=.1)
 
     def forward(self, x):
-        x = self.bn1(F.relu(self.conv1(x)))
-        x = self.bn2(F.relu(self.conv2(x)))
-        #x = self.bn3(F.relu(self.conv3(x)))
-        #x = self.bn4(F.relu(self.conv4(x)))
-        #x = F.relu(self.conv1(x))
-        #x = F.relu(self.conv2(x))
-        #x = F.relu(self.conv3(x))
-        #x = F.relu(self.conv4(x))
+        act = F.gelu
+        x = self.bn1(act(self.conv1(x)))
+        x = self.bn2(act(self.conv2(x)))
+        #x = self.bn3(act(self.conv3(x)))
+        #x = self.bn4(act(self.conv4(x)))
         x = x.view(x.shape[0], -1)
 
-        x = F.relu(self.fc1(x))
+        x = act(self.fc1(x))
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
-        #value = torch.abs(self.fc_v(x))
         value = F.softplus(self.fc_v(x))
-        #value = self.fc_v(x)
-        #var = torch.abs(self.fc_var(x))
         var = F.softplus(self.fc_var(x))
         return value, var, policy
 
@@ -141,16 +117,10 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-2, amsgrad=True)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
-
-        self.v_mean = 0
-        self.v_std = 1
-
-        self.var_mean = 0
-        self.var_std = 1
 
         self.weighted = weighted
 
@@ -256,7 +226,7 @@ class Model:
             l_std = np.array(result_tmp['loss_std'])
             l_sq = (b - 1) * l_std ** 2 / b + l ** 2
             l_sq_combined = np.sum(l_sq * b) / d_size
-            l_std_combined = ((l_sq_combined - l_combined ** 2) * d_size / (d_size - 1) ) ** 0.5
+            l_std_combined = ((l_sq_combined - l_combined ** 2) * d_size / (d_size - 1)) ** 0.5
             result['loss_std'] = l_std_combined
 
         for k in result_tmp:
@@ -433,10 +403,6 @@ class Model:
         full_state = {
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
-                    'v_mean': self.v_mean,
-                    'v_std': self.v_std,
-                    'var_mean': self.var_mean,
-                    'var_std': self.var_std,
                     'fisher': self.fisher,
                 }
 
@@ -474,10 +440,6 @@ class Model:
             checkpoint = torch.load(filename, map_location=self.device)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.v_mean = checkpoint['v_mean']
-            self.v_std = checkpoint['v_std']
-            self.var_mean = checkpoint['var_mean']
-            self.var_std = checkpoint['var_std']
             self.fisher = checkpoint['fisher']
             self.p0 = [p.clone() for p in self.model.parameters()]
             if self.scheduler:
