@@ -56,6 +56,7 @@ parser.add_argument('--mcts_const', default=5.0, type=float, help='PUCT constant
 parser.add_argument('--mcts_sims', default=500, type=int, help='Number of MCTS sims')
 parser.add_argument('--mcts_tau', default=1.0, type=float, help='Temperature constant')
 parser.add_argument('--ngames', default=50, type=int, help='Number of episodes to play')
+parser.add_argument('--online', default=False, help='Online agent training', action='store_true')
 parser.add_argument('--printboard', default=False, help='Print board', action='store_true')
 parser.add_argument('--print_board_to_file', default=False, help='Print board to file', action='store_true')
 parser.add_argument('--save', default=False, help='Save self-play episodes', action='store_true')
@@ -75,6 +76,7 @@ mcts_sims = args.mcts_sims
 mcts_const = args.mcts_const
 mcts_tau = args.mcts_tau
 ngames = args.ngames
+online = args.online
 printboard = args.printboard
 print_board_to_file = args.print_board_to_file
 save = args.save
@@ -97,7 +99,8 @@ if agent_type:
             sims=mcts_sims,
             env=Tetris,
             env_args=env_args,
-            benchmark=benchmark)
+            benchmark=benchmark,
+            online=online)
     agent = Agent(**agent_args)
     agent.update_root(game, ngames)
 else:
