@@ -39,15 +39,11 @@ class Agent:
 
     def init_array(self):
 
-        child_arr = np.zeros((self.init_nodes, self.n_actions), dtype=np.int32)
-        child_stats_arr = np.zeros((self.init_nodes, 6, self.n_actions), dtype=np.float32)
-        node_stats_arr = np.zeros((self.init_nodes, 5), dtype=np.float32)
-        node_ep_arr = np.zeros((self.init_nodes, ), dtype=np.int32)
         self.arrs = {
-                'child': child_arr,
-                'child_stats': child_stats_arr,
-                'node_stats': node_stats_arr,
-                'node_ep': node_ep_arr,
+                'child': np.zeros((self.init_nodes, self.n_actions), dtype=np.int32),
+                'child_stats': np.zeros((self.init_nodes, 6, self.n_actions), dtype=np.float32),
+                'node_stats': np.zeros((self.init_nodes, 5), dtype=np.float32),
+                'node_ep': np.zeros((self.init_nodes, ), dtype=np.int32)
                 }
 
         self.game_arr = [self.env(*self.env_args) for i in range(self.init_nodes)]
