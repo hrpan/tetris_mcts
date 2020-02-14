@@ -37,7 +37,7 @@ class ValueSim(Agent):
         if projection:
             self.node_to_obs = np.zeros(self.init_nodes, dtype=np.int32)
             self.obs_stats = np.zeros((self.init_nodes, 3), dtype=np.float32)
-            self.obs_arr = np.zeros((self.init_nodes, 22, 10), dtype=np.float32)
+            self.obs_arr = np.zeros((self.init_nodes, 22, 10), dtype=np.int8)
             self.obs_index_dict = dict()
             self.obs_available = deque(range(1, self.init_nodes), maxlen=self.init_nodes)
             self.obs_occupied = deque([0], maxlen=self.init_nodes)
