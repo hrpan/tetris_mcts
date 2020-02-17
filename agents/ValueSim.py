@@ -17,8 +17,8 @@ class ValueSim(Agent):
 
         self.g_tmp = self.env(*self.env_args)
 
+        self.online = online
         if online:
-            self.online = online
 
             self.memory_size = memory_size
 
@@ -96,6 +96,11 @@ class ValueSim(Agent):
         _childs = self.arrs['child'][node]
         _ns = self.arrs['node_stats']
 
+        proj = self.projection
+        if proj:
+            _os = self.obs_stats
+            n_to_o = self.node_to_obs
+
         counter = Counter(_childs)
 
         root_score = _ns[node][2]
@@ -103,7 +108,7 @@ class ValueSim(Agent):
         _stats[2] = 0
         for i in range(self.n_actions):
             _idx = _childs[i]
-            if _ns[_idx][0] < 1:
+            if (proj and _os[n_to_o[_idx]][0] < 1) or (not proj and _ns[_idx][0] < 1):
                 return False
             v, var = self.get_value(_idx)
             _stats[0][i] = _ns[_idx][0] / counter[_idx]
@@ -185,7 +190,7 @@ class ValueSim(Agent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=2500, max_iters=100000):
+    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=2500, max_iters=100000, dump_data=True):
 
         print('Training...', **perr)
 
@@ -200,6 +205,9 @@ class ValueSim(Agent):
         else:
             print('Not enough training data ({} < {}), collecting more data.'.format(d_size, m_size), **perr)
             return None
+
+        if dump_data:
+            np.savez('./data/dump', states=states[:d_size], values=values[:d_size], variance=variance[:d_size], weights=weights[:d_size])
 
         self.n_trains += 1
 
