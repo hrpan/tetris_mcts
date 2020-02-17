@@ -1,11 +1,9 @@
 import numpy as np
-import random
 
 from agents.special import std_quantile2, norm_quantile
 from agents.core import *
 
 from numba import jit
-from numba import int32, float32
 
 jit_args = {'nopython': True, 'cache': False, 'fastmath': True}
 
@@ -41,8 +39,20 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
 
         trace.append(index)
 
-        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
-        _child_nodes = list(set(_child_nodes))
+        _child_nodes = []
+        _child_obs = []
+        for i in range(n_actions):
+            c = child[index][i]
+            if c == 0:
+                continue
+            o = n_to_o[c]
+            if o not in _child_obs:
+                _child_nodes.append(c)
+                _child_obs.append(o)
+            else:
+                _idx = _child_obs.index(o)
+                if node_stats[c][2] > node_stats[_idx][2]:
+                    _child_nodes[_idx] = c
 
         len_c = len(_child_nodes)
 
@@ -50,14 +60,13 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
             break
 
         r = node_stats[index][2]
-
         index = check_low(_child_nodes, node_stats, n=low)
 
         if not index:
-            stats = np.zeros((2, len(_child_nodes)), dtype=np.float32)
+            stats = np.zeros((2, len_c), dtype=np.float32)
             n = 0
-            for i, c in enumerate(_child_nodes):
-                o = n_to_o[c]
+            for i in range(len_c):
+                c, o = _child_nodes[i], _child_obs[i]
                 n += obs_stats[o][0]
                 stats[0][i] = obs_stats[o][1] + node_stats[c][2] - r
                 stats[1][i] = obs_stats[o][2] / (obs_stats[o][0] + eps)
@@ -67,6 +76,7 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
             index = _child_nodes[np.argmax(_q)]
 
     return np.array(trace, dtype=np.int32)
+
 
 @jit(**jit_args)
 def backup_trace_obs(trace, node_stats, value, obs_stats, n_to_o):
@@ -90,4 +100,3 @@ def backup_trace_obs(trace, node_stats, value, obs_stats, n_to_o):
         o_stats[0] += 1
         node_stats[idx][0] += 1
         node_stats[idx][4] = max(v, node_stats[idx][4])
-
