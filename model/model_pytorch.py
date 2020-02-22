@@ -37,7 +37,7 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
 
-        kernel_size = 4
+        kernel_size = 3
         stride = 1
         filters = 32
 
@@ -59,9 +59,11 @@ class Net(nn.Module):
 
         flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc1 = 128
-        self.fc1 = nn.Linear(flat_in, n_fc1)
-        flat_out = n_fc1
+        n_fc = 128
+        self.fc1 = nn.Linear(flat_in, n_fc)
+        #self.bn3 = nn.BatchNorm1d(n_fc1)
+        flat_out = n_fc
+
 
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
@@ -70,11 +72,9 @@ class Net(nn.Module):
         torch.nn.init.normal_(self.fc_var.bias, mean=1e3, std=.1)
 
     def forward(self, x):
-        act = F.gelu
+        act = F.relu
         x = self.bn1(act(self.conv1(x)))
         x = self.bn2(act(self.conv2(x)))
-        #x = self.bn3(act(self.conv3(x)))
-        #x = self.bn4(act(self.conv4(x)))
         x = x.view(x.shape[0], -1)
 
         x = act(self.fc1(x))
@@ -117,8 +117,8 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-2, amsgrad=True)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-2)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.95, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
 
@@ -142,7 +142,7 @@ class Model:
 
         self.use_onnx = use_onnx
 
-    def _loss(self, batch):
+    def _loss(self, batch, variance_clip=10.0):
 
         state, value, variance, policy, weight = batch
 
@@ -152,6 +152,8 @@ class Model:
             variance = torch.from_numpy(batch[2])
             policy = torch.from_numpy(batch[3])
             weight = torch.from_numpy(batch[4])
+
+        variance.clamp_(min=variance_clip)
 
         if self.use_cuda:
             state = state.cuda()
