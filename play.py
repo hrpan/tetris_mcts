@@ -62,6 +62,7 @@ parser.add_argument('--print_board_to_file', default=False, help='Print board to
 parser.add_argument('--save', default=False, help='Save self-play episodes', action='store_true')
 parser.add_argument('--save_dir', default='./data/', type=str, help='Directory for save')
 parser.add_argument('--save_file', default='data', type=str, help='Filename to save')
+parser.add_argument('--save_tree', default=False, help='Save expanded tree nodes', action='store_true')
 args = parser.parse_args()
 
 agent_type = args.agent_type
@@ -82,6 +83,7 @@ print_board_to_file = args.print_board_to_file
 save = args.save
 save_dir = args.save_dir
 save_file = args.save_file
+save_tree = args.save_tree
 
 """
 SOME INITS
@@ -108,8 +110,9 @@ else:
 
 if save:
     saver = DataSaver(save_dir, save_file, cycle)
-    saver_all = DataSaver(save_dir, 'tree', cycle)
-    agent.saver = saver_all
+
+if save_tree:
+    agent.saver = DataSaver(save_dir, 'tree', cycle)
 
 tracker = ScoreTracker()
 
