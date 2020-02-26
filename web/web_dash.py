@@ -6,9 +6,11 @@ from plotly.subplots import make_subplots
 import time
 import threading
 import sys
-from parseLog import Parser, ModelParser, BoardParser
+from parseLog import Parser, ModelParser, BoardParser, StatusParser
 from dash.dependencies import Input, Output, State
 from math import ceil
+
+update_interval = 500
 
 external_stylesheets = ['./static/css/style.css']
 
@@ -140,8 +142,6 @@ fig_weight = go.Figure(
     )
 )
 
-rmslg_str = 'Node removals since last game: {}'
-queue_str = 'Queue usage: {} / {}'
 app.layout = html.Div([
             html.Div([
                 dcc.Graph(id='live-ls', figure=fig),
@@ -162,14 +162,16 @@ app.layout = html.Div([
                 html.Div([
                     html.H3('Status:'),
                     html.Ul(children=[
-                        html.Li(id='live-rmslg',
-                                children=rmslg_str.format(0)),
-                        html.Li(id='live-queue',
-                                children=queue_str.format(0, 0))
+                        html.Li(children=html.H4(children=['Combo: ', html.Data(id='live-combo', children=0)])),
+                        html.Li(children=html.H4(children=['Lines Cleared: ', html.Data(id='live-lines', children=0)])),
+                        html.Li(children=html.H4(children=['Score: ', html.Data(id='live-score', children=0)])),
+                        html.Li(children=html.H4(children=['Single/Double/Triple/Tetris: ', html.Data(id='live-line_stats', children='0/0/0/0')])),
+                        html.Li(children=html.H4(children=['Node removals since last game: ', html.Data(id='live-rmslg', children=0)])),
+                        html.Li(children=html.H4(children=['Queue usage: ', html.Data(id='live-queue', children='0/0')])),
                     ])
                 ], className='status'),
             ], className='box'),
-            dcc.Interval(id='interval-component', interval=250, n_intervals=0)
+            dcc.Interval(id='interval-component', interval=update_interval, n_intervals=0)
         ])
 
 
@@ -206,13 +208,19 @@ def update_log_graphs(d):
 
 
 @app.callback(
-    [Output('live-rmslg', 'children'), Output('live-queue', 'children')],
-    [Input('last-update', 'data')])
+    [Output('live-combo', 'children'),
+     Output('live-lines', 'children'),
+     Output('live-score', 'children'),
+     Output('live-line_stats', 'children'),
+     Output('live-rmslg', 'children'),
+     Output('live-queue', 'children')],
+    [Input('interval-component', 'n_intervals')])
 def update_status(d):
-    #rmslg = log_parser.data['rm_since_last_game']
-    #filled = log_parser.data['filled']
-    #size = log_parser.data['size']
-    return rmslg_str.format(rmslg), queue_str.format(filled, size)
+    print(line_stats)
+    _tmp = '{}/{}/{}/{}'.format(*line_stats)
+    _tmp2 = '{}/{}'.format(filled, size)
+    print(combo, lines, score, _tmp, rmslg, _tmp2)
+    return int(combo[0]), int(lines[0]), int(score[0]), _tmp, int(rmslg), _tmp2
 
 
 @app.callback(Output('live-weights', 'figure'),
@@ -223,12 +231,14 @@ def update_weight_graphs(d):
 
 log_parser = Parser('../log_endless_dist')
 model_parser = ModelParser()
-board_parser = BoardParser()
+status_parser = StatusParser()
 rmslg, filled, size = 0, 0, 0
+combo, lines, score = [0], [0], [0]
+line_stats = [0, 0, 0, 0]
 
-def parser_update():
+def log_parser_update():
     global log_parser
-    global fig, fig_pt, fig_loss, fig_data, fig_weight, fig_board
+    global fig, fig_pt, fig_loss, fig_data, fig_weight
     global rmslg, filled, size
     while True:
         update = log_parser.check_update()
@@ -284,16 +294,27 @@ def parser_update():
                     )
             fig_weight = _fig_weight
             print('Model update done.')
-        board_parser.update()
-        fig_board.data[0]['z'] = board_parser.data[::-1, :]
-        time.sleep(0.25)
+
+        time.sleep(update_interval / 1000)
+
+def status_parser_update():
+    global combo, lines, score, line_stats
+    while True:
+        fig_board.data[0]['z'] = status_parser.board[::-1, :]
+        combo = status_parser.combo
+        lines = status_parser.lines
+        score = status_parser.score
+        line_stats = status_parser.line_stats
+        time.sleep(update_interval / 1000)
 
 
 if __name__ == '__main__':
     distributional = True
     log_parser = Parser(sys.argv[1])
     model_parser = ModelParser(distributional)
-    thread_log = threading.Thread(target=parser_update)
+    thread_log = threading.Thread(target=log_parser_update)
     thread_log.start()
+    thread_status = threading.Thread(target=status_parser_update)
+    thread_status.start()
 
     app.run_server(host='0.0.0.0', port=8050, debug=False)

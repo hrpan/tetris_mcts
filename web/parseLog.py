@@ -27,6 +27,16 @@ class BoardParser:
         self.file.seek(0)
 
 
+class StatusParser:
+    def __init__(self):
+
+        self.board = np.memmap('../tmp/board', mode='r', dtype=np.int8, shape=(22, 10))
+        self.combo = np.memmap('../tmp/combo', mode='r', dtype=np.int32, shape=(1, ))
+        self.lines = np.memmap('../tmp/lines', mode='r', dtype=np.int32, shape=(1, ))
+        self.score = np.memmap('../tmp/score', mode='r', dtype=np.int32, shape=(1, ))
+        self.line_stats = np.memmap('../tmp/line_stats', mode='r', dtype=np.int32, shape=(4, ))
+
+
 class Parser:
     def __init__(self, filename):
 
