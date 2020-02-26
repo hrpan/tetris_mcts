@@ -59,95 +59,89 @@ parser.add_argument('--ngames', default=50, type=int, help='Number of episodes t
 parser.add_argument('--online', default=False, help='Online agent training', action='store_true')
 parser.add_argument('--printboard', default=False, help='Print board', action='store_true')
 parser.add_argument('--print_board_to_file', default=False, help='Print board to file', action='store_true')
+parser.add_argument('--realtime_status', default=False, help='Save realtime game status through numpy memmap', action='store_true')
 parser.add_argument('--save', default=False, help='Save self-play episodes', action='store_true')
 parser.add_argument('--save_dir', default='./data/', type=str, help='Directory for save')
 parser.add_argument('--save_file', default='data', type=str, help='Filename to save')
 parser.add_argument('--save_tree', default=False, help='Save expanded tree nodes', action='store_true')
 args = parser.parse_args()
 
-agent_type = args.agent_type
-app = args.app
-benchmark = args.benchmark
-cycle = args.cycle
-endless = args.endless
-gamma = args.gamma
-gui = args.gui
-interactive = args.interactive
-mcts_sims = args.mcts_sims
-mcts_const = args.mcts_const
-mcts_tau = args.mcts_tau
-ngames = args.ngames
-online = args.online
-printboard = args.printboard
-print_board_to_file = args.print_board_to_file
-save = args.save
-save_dir = args.save_dir
-save_file = args.save_file
-save_tree = args.save_tree
-
 """
 SOME INITS
 """
-env_args = ((22, 10), app)
+env_args = ((22, 10), args.app)
 game = Tetris(*env_args)
 
-if endless:
-    ngames = 0
+ngames = 0
 
-if agent_type:
-    _agent_module = import_module('agents.'+agent_type)
-    Agent = getattr(_agent_module, agent_type)
+if args.agent_type:
+    _agent_module = import_module('agents.' + args.agent_type)
+    Agent = getattr(_agent_module, args.agent_type)
     agent_args = dict(
-            sims=mcts_sims,
+            sims=args.mcts_sims,
             env=Tetris,
             env_args=env_args,
-            benchmark=benchmark,
-            online=online)
+            benchmark=args.benchmark,
+            online=args.online)
     agent = Agent(**agent_args)
     agent.update_root(game, ngames)
 else:
     agent = None
 
-if save:
-    saver = DataSaver(save_dir, save_file, cycle)
+if args.save:
+    saver = DataSaver(args.save_dir, args.save_file, args.cycle)
 
-if save_tree:
-    agent.saver = DataSaver(save_dir, 'tree', cycle)
+if args.save_tree:
+    agent.saver = DataSaver(args.save_dir, 'tree', args.cycle)
 
 tracker = ScoreTracker()
 
-if gui:
+if args.gui:
     G = GUI()
 
-if print_board_to_file:
+if args.print_board_to_file:
     board_output = open('board_output', 'wb')
+
+if args.realtime_status:
+    _board = np.memmap('./tmp/board', dtype=np.int8, mode='w+', shape=(22, 10))
+    _combo = np.memmap('./tmp/combo', dtype=np.int32, mode='w+', shape=(1, ))
+    _score = np.memmap('./tmp/score', dtype=np.int32, mode='w+', shape=(1, ))
+    _lines = np.memmap('./tmp/lines', dtype=np.int32, mode='w+', shape=(1, ))
+    _line_stats = np.memmap('./tmp/line_stats', dtype=np.int32, mode='w+', shape=(4, ))
 """
 MAIN GAME LOOP
 """
 while True:
-    if interactive:
+    if args.interactive:
         game.printState()
         print('Current score: {}'.format(game.getScore()))
         action = int(input('Play:'))
 
     elif agent:
 
-        if printboard:
+        if args.printboard:
             game.printState()
 
         action = agent.play()
 
-        if save:
+        if args.save:
             saver.add(ngames, action, agent, game)
 
-    if gui:
+    if args.gui:
         G.update_canvas(game.getState())
 
-    if print_board_to_file:
+    if args.print_board_to_file:
         board_output.truncate(0)
         board_output.seek(0)
         board_output.write(game.getState().tostring())
         board_output.flush()
+
+    if args.realtime_status:
+        _board[:] = game.getState()[:]
+        _combo[:] = game.getCombo()
+        _lines[:] = game.getLines()
+        _score[:] = game.getScore()
+        _line_stats[:] = game.line_stats[:] 
 
     game.play(action)
 
@@ -155,24 +149,24 @@ while True:
         agent.update_root(game, ngames)
 
     if game.end:
-        if interactive:
+        if args.interactive:
             play_more = input('Play more?')
             if play_more == 'y':
                 game.reset()
             else:
                 break
-        elif endless:
+        elif args.endless:
             ngames += 1
             print('Episode: {:>5} Score: {:>10} Lines Cleared: {:>10}'.format(ngames, game.getScore(), game.getLines()), flush=True)
             game.reset()
             agent.update_root(game, ngames)
         else:
-            ngames -= 1
+            ngames += 1
 
             tracker.append(game.getScore(), game.getLines())
             tracker.printStats()
 
-            if ngames == 0:
+            if ngames >= args.ngames:
                 break
             else:
                 game.reset()
@@ -182,5 +176,5 @@ print(flush=True)
 
 agent.close()
 
-if save:
+if args.save:
     saver.close()
