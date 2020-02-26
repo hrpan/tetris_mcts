@@ -18,6 +18,7 @@ class State(tables.IsDescription):
     action         = tables.Int8Col()
     combo          = tables.Int32Col()
     lines          = tables.Int32Col()
+    line_stats     = tables.Int32Col(shape=(4,))
     score          = tables.Int32Col()
     child_stats    = tables.Float32Col(shape=(6, n_actions))
     cycle          = tables.Int32Col()
@@ -68,6 +69,7 @@ class DataSaver:
         self.state['action'] = action
         self.state['combo'] = game.getCombo()
         self.state['lines'] = game.getLines()
+        self.state['line_stats'] = game.line_stats
         self.state['score'] = game.getScore()
         self.state['child_stats'] = agent.get_stats()
         self.state['cycle'] = self.cycle
@@ -84,7 +86,7 @@ class DataSaver:
 
     def add_raw(self, episode, board,
                 policy, action, combo,
-                lines, score, child_stats,
+                lines, line_stats, score, child_stats,
                 value, variance):
 
         self.iter += 1
@@ -94,6 +96,7 @@ class DataSaver:
         self.state['action'] = action
         self.state['combo'] = combo
         self.state['lines'] = lines
+        self.state['line_stats'] = line_stats
         self.state['score'] = score
         self.state['child_stats'] = child_stats
         self.state['cycle'] = self.cycle
@@ -134,6 +137,7 @@ class DataLoader:
         self.action = np.concatenate([t.col('action') for t in self.tables])
         self.score = np.concatenate([t.col('score') for t in self.tables])
         self.lines = np.concatenate([t.col('lines') for t in self.tables])
+        self.line_stats = np.concatenate([t.col('line_stats') for t in self.tables])
         self.combo = np.concatenate([t.col('combo') for t in self.tables])
         self.child_stats = np.concatenate([t.col('child_stats') for t in self.tables])
         self.cycle = np.concatenate([t.col('cycle') for t in self.tables])
