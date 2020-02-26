@@ -230,6 +230,7 @@ class Agent:
                           np.argmax(_tmp_stats[1]),
                           _g.getCombo(),
                           _g.getLines(),
+                          _g.line_stats,
                           _g.getScore(),
                           _tmp_stats,
                           v,
