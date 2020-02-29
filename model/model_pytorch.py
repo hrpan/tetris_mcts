@@ -8,7 +8,6 @@ import torch.utils.data as D
 #import onnx
 import os, subprocess
 import numpy as np
-import math
 from collections import defaultdict
 from caffe2.python import workspace
 IMG_H, IMG_W, IMG_C = (22, 10, 1)
@@ -81,7 +80,8 @@ class Net(nn.Module):
 
         #policy = F.softmax(self.fc_p(x), dim=1)
         policy = torch.ones((x.shape[0], 7)) / 7
-        value = F.softplus(self.fc_v(x))
+        value = self.fc_v(x)
+        #value = F.softplus(self.fc_v(x))
         var = F.softplus(self.fc_var(x))
         return value, var, policy
 
@@ -117,8 +117,8 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-2)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.95, nesterov=True)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-6, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
 
@@ -142,7 +142,7 @@ class Model:
 
         self.use_onnx = use_onnx
 
-    def _loss(self, batch, variance_clip=10.0):
+    def _loss(self, batch, variance_clip=1.0):
 
         state, value, variance, policy, weight = batch
 
@@ -352,15 +352,12 @@ class Model:
 
         self.model.eval()
 
-        b = torch.from_numpy(batch).float()
-        if self.use_cuda:
-            b = b.cuda()
+        b = torch.as_tensor(batch, dtype=torch.float, device=self.device)
 
         with torch.no_grad():
             output = self.model(b)
 
         result = [o.cpu().numpy() for o in output]
-        #result = self.model_caffe.run([batch.astype(np.float32)])
 
         return result
 
@@ -368,10 +365,7 @@ class Model:
 
         self.model.eval()
 
-        #state = convert(batch)
-        b = torch.from_numpy(batch).float()
-        if self.use_cuda:
-            b = b.cuda()
+        b = torch.as_tensor(batch, dtype=torch.float, device=self.device)
 
         with torch.no_grad():
             output = self.model(b)
