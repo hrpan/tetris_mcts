@@ -131,18 +131,8 @@ class DataLoader:
 
         self.tables = [f.root.State for f in self.files]
 
-        self.episode = np.concatenate([t.col('episode') for t in self.tables])
-        self.board = np.concatenate([t.col('board') for t in self.tables])
-        self.policy = np.concatenate([t.col('policy') for t in self.tables])
-        self.action = np.concatenate([t.col('action') for t in self.tables])
-        self.score = np.concatenate([t.col('score') for t in self.tables])
-        self.lines = np.concatenate([t.col('lines') for t in self.tables])
-        self.line_stats = np.concatenate([t.col('line_stats') for t in self.tables])
-        self.combo = np.concatenate([t.col('combo') for t in self.tables])
-        self.child_stats = np.concatenate([t.col('child_stats') for t in self.tables])
-        self.cycle = np.concatenate([t.col('cycle') for t in self.tables])
-        self.value = np.concatenate([t.col('value') for t in self.tables])
-        self.variance = np.concatenate([t.col('variance') for t in self.tables])
+        for c in self.tables[0].colnames:
+            setattr(self, c, np.concatenate([t.col(c) for t in self.tables]))
 
         self.length = len(self.episode)
 
