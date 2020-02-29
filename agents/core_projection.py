@@ -51,7 +51,7 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
                 _child_obs.append(o)
             else:
                 _idx = _child_obs.index(o)
-                if node_stats[c][2] > node_stats[_idx][2]:
+                if node_stats[c][2] > node_stats[_child_nodes[_idx]][2]:
                     _child_nodes[_idx] = c
 
         len_c = len(_child_nodes)
@@ -60,7 +60,7 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
             break
 
         r = node_stats[index][2]
-        index = check_low(_child_nodes, node_stats, n=low)
+        index = check_low(_child_obs, obs_stats, n=low)
 
         if not index:
             stats = np.zeros((2, len_c), dtype=np.float32)
@@ -74,7 +74,8 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
             _q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
 
             index = _child_nodes[np.argmax(_q)]
-
+        else:
+            index = _child_nodes[_child_obs.index(index)]
     return np.array(trace, dtype=np.int32)
 
 
