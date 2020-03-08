@@ -160,7 +160,7 @@ class ValueSim(Agent):
             for arr in arrs:
                 arr[idx].fill(0)
 
-    def store_nodes(self, nodes, min_visits=20):
+    def store_nodes(self, nodes, min_visits=10):
 
         print('Storing unused nodes...', **perr)
 
@@ -190,7 +190,7 @@ class ValueSim(Agent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=2500, max_iters=100000, dump_data=True):
+    def train_nodes(self, batch_size=128, iters_per_val=100, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=10000, max_iters=100000, dump_data=True):
 
         print('Training...', **perr)
 
@@ -300,7 +300,7 @@ class ValueSim(Agent):
 
             self.obs_stats[idx].fill(0)
 
-    def store_obs(self, obs, min_visits=20):
+    def store_obs(self, obs, min_visits=10):
 
         print('Storing unused observations...', **perr)
 
@@ -325,3 +325,9 @@ class ValueSim(Agent):
         print('{} observations stored.'.format(m_idx - self.memory_index), **perr)
 
         self.memory_index = m_idx
+
+    def set_root(self, game):
+
+        self.root = self.new_node(game)
+        if self.projection:
+            self.new_obs(game.getState(), self.root)
