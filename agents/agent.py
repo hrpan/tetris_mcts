@@ -132,14 +132,10 @@ class Agent:
     def play(self):
 
         for i in range(self.sims):
-            #print(self.arrs['node_stats'][self.root].astype(np.int))
-            #for c in self.arrs['child'][self.root]:
-            #    print(self.arrs['node_stats'][c].astype(np.int))
-            #input()
             self.mcts(self.root)
-        #input()
+
         self.stats = self.compute_stats()
-        #print(self.arrs['node_stats'][self.root].astype(np.int), self.stats[0:2].astype(np.int))
+
         if np.all(self.stats[3] == 0):
             action = np.random.choice(self.n_actions)
         else:
