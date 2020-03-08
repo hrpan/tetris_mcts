@@ -6,9 +6,10 @@ from plotly.subplots import make_subplots
 import time
 import threading
 import sys
-from parseLog import Parser, ModelParser, BoardParser, StatusParser
+from parseLog import Parser, ModelParser, StatusParser
 from dash.dependencies import Input, Output, State
 from math import ceil
+import numpy as np
 
 update_interval = 500
 
@@ -44,6 +45,31 @@ fig = go.Figure(
                 'overlaying': 'y',
                 'showgrid': False,
                 'rangemode': 'tozero'},
+        uirevision=True
+    )
+)
+
+fig_50 = go.Figure(
+    data=[
+        go.Scatter(x=[], y=[],
+                   error_y=dict(type='data', array=[], visible=True),
+                   name='Lines Cleared', mode='lines'),
+        go.Scatter(x=[], y=[],
+                   error_y=dict(type='data', array=[], visible=True),
+                   name='Score', mode='lines', yaxis='y2')
+    ],
+    layout=go.Layout(
+        title={'text': 'Lines Cleared / Score per 50 episodes',
+               'font': {'color': colors['text']}},
+        plot_bgcolor=colors['background'],
+        paper_bgcolor=colors['background'],
+        font={'color': colors['text']},
+        xaxis={'title': '50 Episodes', 'rangemode': 'tozero'},
+        yaxis={'title': 'Lines Cleared',
+               'showgrid': False,
+               'rangemode': 'tozero'},
+        yaxis2={'title': 'Score', 'side': 'right', 'overlaying': 'y',
+                'showgrid': False, 'rangemode': 'tozero'},
         uirevision=True
     )
 )
@@ -145,6 +171,7 @@ fig_weight = go.Figure(
 app.layout = html.Div([
             html.Div([
                 dcc.Graph(id='live-ls', figure=fig),
+                dcc.Graph(id='live-ls-50', figure=fig_50),
                 dcc.Graph(id='live-ls-pt', figure=fig_pt),
                 dcc.Graph(id='live-loss', figure=fig_loss),
                 dcc.Graph(id='live-data', figure=fig_data),
@@ -199,12 +226,13 @@ def update_board(n):
 
 @app.callback(
     [Output('live-ls', 'figure'),
+     Output('live-ls-50', 'figure'),
      Output('live-ls-pt', 'figure'),
      Output('live-loss', 'figure'),
      Output('live-data', 'figure')],
     [Input('last-update', 'data')])
 def update_log_graphs(d):
-    return fig, fig_pt, fig_loss, fig_data
+    return fig, fig_50, fig_pt, fig_loss, fig_data
 
 
 @app.callback(
@@ -216,10 +244,8 @@ def update_log_graphs(d):
      Output('live-queue', 'children')],
     [Input('interval-component', 'n_intervals')])
 def update_status(d):
-    print(line_stats)
     _tmp = '{}/{}/{}/{}'.format(*line_stats)
     _tmp2 = '{}/{}'.format(filled, size)
-    print(combo, lines, score, _tmp, rmslg, _tmp2)
     return int(combo[0]), int(lines[0]), int(score[0]), _tmp, int(rmslg), _tmp2
 
 
@@ -236,9 +262,10 @@ rmslg, filled, size = 0, 0, 0
 combo, lines, score = [0], [0], [0]
 line_stats = [0, 0, 0, 0]
 
+
 def log_parser_update():
     global log_parser
-    global fig, fig_pt, fig_loss, fig_data, fig_weight
+    global fig, fig_50, fig_pt, fig_loss, fig_data, fig_weight
     global rmslg, filled, size
     while True:
         update = log_parser.check_update()
@@ -249,6 +276,22 @@ def log_parser_update():
             fig.data[0]['y'] = line_cleared
             fig.data[1]['x'] = list(range(len(score)))
             fig.data[1]['y'] = score
+
+            _lc, _lc_err = [], []
+            _sc, _sc_err = [], []
+            for i in range((len(line_cleared) + 50) // 50):
+                _tmp = line_cleared[i * 50: (i+1) * 50]
+                _lc.append(np.mean(_tmp))
+                _lc_err.append(np.std(_tmp) / np.sqrt(len(_tmp)))
+                _tmp = score[i * 50: (i+1) * 50]
+                _sc.append(np.mean(_tmp))
+                _sc_err.append(np.std(_tmp) / np.sqrt(len(_tmp)))
+            fig_50.data[0]['x'] = list(range((len(line_cleared) + 50) // 50))
+            fig_50.data[0]['y'] = _lc
+            fig_50.data[0]['error_y']['array'] = _lc_err
+            fig_50.data[1]['x'] = list(range((len(line_cleared) + 50) // 50))
+            fig_50.data[1]['y'] = _sc
+            fig_50.data[1]['error_y']['array'] = _sc_err
 
             line_cleared_pt = log_parser.data['line_cleared_per_train']
             score_pt = log_parser.data['score_per_train']
@@ -296,6 +339,7 @@ def log_parser_update():
             print('Model update done.')
 
         time.sleep(update_interval / 1000)
+
 
 def status_parser_update():
     global combo, lines, score, line_stats
