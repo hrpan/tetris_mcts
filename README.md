@@ -92,8 +92,7 @@ However, such handcrafted rewards can bias your agents toward the target you set
 * Pillow==7.0.0
 * caffe2==0.8.1
 
-You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris)
-and add `<path-to-pyTetris>` to `PYTHONPATH` or just copy `nbTetris.py` to the same directory of `play.py`.
+You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris).
 
 ## How to run it?
 
