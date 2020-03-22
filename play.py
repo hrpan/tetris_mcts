@@ -1,4 +1,5 @@
 from nbTetris import Tetris
+#from pyTetris import Tetris
 import numpy as np
 import argparse
 from util.gui import GUI
@@ -114,7 +115,7 @@ MAIN GAME LOOP
 while True:
     if args.interactive:
         game.printState()
-        print('Current score: {}'.format(game.getScore()))
+        print('Current score: {}'.format(game.score))
         action = int(input('Play:'))
 
     elif agent:
@@ -138,9 +139,9 @@ while True:
 
     if args.realtime_status:
         _board[:] = game.getState()[:]
-        _combo[:] = game.getCombo()
-        _lines[:] = game.getLines()
-        _score[:] = game.getScore()
+        _combo[:] = game.combo
+        _lines[:] = game.line_clears
+        _score[:] = game.score
         _line_stats[:] = game.line_stats[:] 
 
     game.play(action)
@@ -157,13 +158,13 @@ while True:
                 break
         elif args.endless:
             ngames += 1
-            print('Episode: {:>5} Score: {:>10} Lines Cleared: {:>10}'.format(ngames, game.getScore(), game.getLines()), flush=True)
+            print('Episode: {:>5} Score: {:>10} Lines Cleared: {:>10}'.format(ngames, game.score, game.line_clears), flush=True)
             game.reset()
             agent.update_root(game, ngames)
         else:
             ngames += 1
 
-            tracker.append(game.getScore(), game.getLines())
+            tracker.append(game.score, game.line_clears)
             tracker.printStats()
 
             if ngames >= args.ngames:

@@ -67,10 +67,10 @@ class DataSaver:
         self.state['board'] = game.getState()
         self.state['policy'] = agent.get_prob()
         self.state['action'] = action
-        self.state['combo'] = game.getCombo()
-        self.state['lines'] = game.getLines()
+        self.state['combo'] = game.combo
+        self.state['lines'] = game.line_clears
         self.state['line_stats'] = game.line_stats
-        self.state['score'] = game.getScore()
+        self.state['score'] = game.score
         self.state['child_stats'] = agent.get_stats()
         self.state['cycle'] = self.cycle
         v, var = agent.get_value()

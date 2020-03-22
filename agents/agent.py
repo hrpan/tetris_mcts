@@ -59,7 +59,6 @@ class Agent:
 
         if self.backend == 'pytorch':
             from model.model_pytorch import Model
-            #from model.model_bayesian import Model
             self.model = Model()
             self.model.load()
 
@@ -224,10 +223,10 @@ class Agent:
                           _g.getState(),
                           _tmp_stats[0] / _tmp_stats[0].sum(),
                           np.argmax(_tmp_stats[1]),
-                          _g.getCombo(),
-                          _g.getLines(),
+                          _g.combo,
+                          _g.line_clears,
                           _g.line_stats,
-                          _g.getScore(),
+                          _g.score,
                           _tmp_stats,
                           v,
                           var)
@@ -247,7 +246,7 @@ class Agent:
 
         self.set_root(game)
 
-        self.arrs['node_stats'][self.root][2] = game.getScore()
+        self.arrs['node_stats'][self.root][2] = game.score
 
     def close(self):
 
