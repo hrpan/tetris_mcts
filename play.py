@@ -1,5 +1,4 @@
-from nbTetris import Tetris
-#from pyTetris import Tetris
+from pyTetris import Tetris
 import numpy as np
 import argparse
 from util.gui import GUI
