@@ -195,8 +195,8 @@ class Agent:
 
             self.node_index_dict.pop(_g, None)
 
-            for arr in arrs:
-                arr[idx].fill(0)
+        for arr in arrs:
+            arr[self.available] = 0
 
     def save_nodes(self, nodes_to_save):
 
