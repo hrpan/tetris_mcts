@@ -31,7 +31,67 @@ def get_occupied_obs(index, child, n_to_o):
 
 
 @jit(**jit_args)
-def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
+def get_unique_child_obs(index, child, node_stats, n_to_o):
+    child_nodes = []
+    child_obs = []
+    for i in range(n_actions):
+        c = child[index][i]
+        if c == 0:
+            continue
+        o = n_to_o[c]
+        if o not in child_obs:
+            child_nodes.append(c)
+            child_obs.append(o)
+        else:
+            _idx = child_obs.index(o)
+            if node_stats[c][2] > node_stats[child_nodes[_idx]][2]:
+                child_nodes[_idx] = c
+    return child_nodes, child_obs
+
+
+@jit(**jit_args)
+def policy_obs_clt(child_nodes, child_obs, node_stats, obs_stats, root):
+    stats = np.zeros((2, len(child_nodes)), dtype=np.float32)
+    n = 0
+    for i in range(len(child_nodes)):
+        c, o = child_nodes[i], child_obs[i]
+        n += obs_stats[o][0]
+        stats[0][i] = obs_stats[o][1] + node_stats[c][2] - node_stats[root][2]
+        stats[1][i] = obs_stats[o][2] / (obs_stats[o][0] + eps)
+    q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
+    return child_nodes[np.argmax(q)]
+
+
+@jit(**jit_args)
+def _policy_obs_mc(child_nodes, child_obs, node_stats, obs_stats, root, sims=100):
+    stats = np.zeros((2, len(child_nodes)), dtype=np.float32)
+    for i, (c, o) in enumerate(zip(child_nodes, child_obs)):
+        stats[0][i] = obs_stats[o][1] + node_stats[c][2] - node_stats[root][2]
+        stats[1][i] = obs_stats[o][2]
+
+    rnd = np.random.randn(sims, len(child_nodes))
+
+    q = rnd * np.sqrt(stats[1]) + stats[0]
+
+    action_count = np.zeros((len(child_nodes),))
+    for i in range(sims):
+        action_count[np.argmax(q[i])] += 1
+
+    return action_count / action_count.sum()
+
+
+@jit(**jit_args)
+def policy_obs_mc(child_nodes, child_obs, node_stats, obs_stats, root, sims=100, stochastic=True):
+    weights = _policy_obs_mc(child_nodes, child_obs, node_stats, obs_stats, root, sims)
+
+    if stochastic:
+        return child_nodes[sample_from(weights)]
+    else:
+        return child_nodes[np.argmax(weights)]
+
+
+@jit(**jit_args)
+def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, policy=policy_obs_mc, low=1):
 
     trace = []
 
@@ -39,44 +99,43 @@ def select_trace_obs(index, child, node_stats, obs_stats, n_to_o, low=1):
 
         trace.append(index)
 
-        _child_nodes = []
-        _child_obs = []
-        for i in range(n_actions):
-            c = child[index][i]
-            if c == 0:
-                continue
-            o = n_to_o[c]
-            if o not in _child_obs:
-                _child_nodes.append(c)
-                _child_obs.append(o)
-            else:
-                _idx = _child_obs.index(o)
-                if node_stats[c][2] > node_stats[_child_nodes[_idx]][2]:
-                    _child_nodes[_idx] = c
+        child_nodes, child_obs = get_unique_child_obs(index, child, node_stats, n_to_o)
 
-        len_c = len(_child_nodes)
-
-        if len_c == 0:
+        if not child_nodes:
             break
 
-        r = node_stats[index][2]
-        index = check_low(_child_obs, obs_stats, n=low)
-
-        if not index:
-            stats = np.zeros((2, len_c), dtype=np.float32)
-            n = 0
-            for i in range(len_c):
-                c, o = _child_nodes[i], _child_obs[i]
-                n += obs_stats[o][0]
-                stats[0][i] = obs_stats[o][1] + node_stats[c][2] - r
-                stats[1][i] = obs_stats[o][2] / (obs_stats[o][0] + eps)
-
-            _q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
-
-            index = _child_nodes[np.argmax(_q)]
+        o = check_low(child_obs, obs_stats, n=low)
+        if not o:
+            index = policy(child_nodes, child_obs, node_stats, obs_stats, index)
         else:
-            index = _child_nodes[_child_obs.index(index)]
+            index = child_nodes[child_obs.index(o)]
     return np.array(trace, dtype=np.int32)
+
+
+@jit(**jit_args)
+def backup_trace_obs_by_policy(trace, child, node_stats, value, obs_stats, n_to_o, policy=_policy_obs_mc):
+    for idx in trace[::-1]:
+        node_stats[idx][0] += 1
+        obs = n_to_o[idx]
+        o_stats = obs_stats[obs]
+        o_stats[0] += 1
+        child_nodes, child_obs = get_unique_child_obs(idx, child, node_stats, n_to_o)
+        if not child_nodes:
+            continue
+        empty = False
+        for o in child_obs:
+            if obs_stats[o][0] == 0:
+                empty = True
+                break
+        if empty:
+            continue
+        o_stats[1:] = 0
+        p = policy(child_nodes, child_obs, node_stats, obs_stats, idx)
+        for _p, _c, _o in zip(p, child_nodes, child_obs):
+            mu = obs_stats[_o][1] + node_stats[_c][2] - node_stats[idx][2]
+            o_stats[1] += _p * mu
+            o_stats[2] += _p * mu * mu
+        o_stats[2] -= o_stats[1] ** 2
 
 
 @jit(**jit_args)
