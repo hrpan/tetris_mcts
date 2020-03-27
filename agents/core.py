@@ -22,6 +22,17 @@ def findZero(arr):
             return i
     return False
 
+@jit(**jit_args)
+def sample_from(weights):
+    x = np.random.rand()
+    cum = 0
+    p = weights / weights.sum()
+    for i in range(len(p)):
+        cum += p[i]
+        if cum >= x:
+            return i
+
+    return -1
 
 @jit(**jit_args)
 def backup_trace(trace, node_stats, value):
