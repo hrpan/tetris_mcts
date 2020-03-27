@@ -133,14 +133,7 @@ class Agent:
         for i in range(self.sims):
             self.mcts(self.root)
 
-        self.stats = self.compute_stats()
-
-        if np.all(self.stats[3] == 0):
-            action = np.random.choice(self.n_actions)
-        else:
-            action = np.argmax(self.stats[3])
-
-        return action
+        return self.get_action()
 
     def compute_stats(self):
         _stats = np.zeros((6, self.n_actions))
@@ -158,6 +151,12 @@ class Agent:
             _stats[5][i] = _ns[_idx][4]
 
         return _stats
+
+    def get_action(self):
+
+        self.stats = self.compute_stats()
+
+        return np.argmax(self.stats[3])
 
     def get_prob(self):
 
