@@ -8,6 +8,7 @@ import torch.utils.data as D
 #import onnx
 import os, subprocess
 import numpy as np
+import random
 from collections import defaultdict
 from caffe2.python import workspace
 IMG_H, IMG_W, IMG_C = (22, 10, 1)
@@ -15,8 +16,6 @@ IMG_H, IMG_W, IMG_C = (22, 10, 1)
 EXP_PATH = './pytorch_model/'
 
 n_actions = 7
-
-eps = 0.01
 
 
 def convOutShape(shape_in, kernel_size, stride):
@@ -33,61 +32,74 @@ def convOutShape(shape_in, kernel_size, stride):
 
 class Net(nn.Module):
 
-    def __init__(self):
+    def __init__(self, input_shape=(22, 10), eps=1.):
         super(Net, self).__init__()
 
         kernel_size = 3
         stride = 1
         filters = 32
+        bias = False
 
-        self.conv1 = nn.Conv2d(1, filters, kernel_size, stride)
-        self.bn1 = nn.BatchNorm2d(filters)
-        _shape = convOutShape((22, 10), kernel_size, stride)
+        self.conv1 = nn.Conv2d(1, filters, kernel_size, stride, bias=bias)
+        self.norm1 = nn.BatchNorm2d(filters)
+        _shape = convOutShape(input_shape, kernel_size, stride)
 
-        self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride)
-        self.bn2 = nn.BatchNorm2d(filters)
+        self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride, bias=bias)
+        self.norm2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
-
-        #self.conv3 = nn.Conv2d(filters, filters, kernel_size, stride)
-        #self.bn3 = nn.BatchNorm2d(filters)
-        #_shape = convOutShape(_shape, kernel_size, stride)
-
-        #self.conv4 = nn.Conv2d(filters, filters, kernel_size, stride)
-        #self.bn4 = nn.BatchNorm2d(filters)
-        #_shape = convOutShape(_shape, kernel_size, stride)
 
         flat_in = _shape[0] * _shape[1] * filters
 
         n_fc = 128
         self.fc1 = nn.Linear(flat_in, n_fc)
-        #self.bn3 = nn.BatchNorm1d(n_fc1)
         flat_out = n_fc
 
 
         #self.fc_p = nn.Linear(flat_out, n_actions)
         self.fc_v = nn.Linear(flat_out, 1)
         self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=250, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=1e3, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=1e2, std=.1)
+        torch.nn.init.normal_(self.fc_v.bias, mean=1e2, std=.1)
+        self.eps = nn.Parameter(torch.tensor([eps]), requires_grad=False)
 
     def forward(self, x):
         act = F.relu
-        x = self.bn1(act(self.conv1(x)))
-        x = self.bn2(act(self.conv2(x)))
+        x = act(self.norm1(self.conv1(x)), inplace=True)
+        x = act(self.norm2(self.conv2(x)), inplace=True)
+        #x = act(self.conv1(x), inplace=True)
+        #x = act(self.conv2(x), inplace=True)
         x = x.view(x.shape[0], -1)
 
-        x = act(self.fc1(x))
+        x = act(self.fc1(x), inplace=True)
 
-        #policy = F.softmax(self.fc_p(x), dim=1)
-        policy = torch.ones((x.shape[0], 7)) / 7
         value = self.fc_v(x)
-        #value = F.softplus(self.fc_v(x))
-        var = F.softplus(self.fc_var(x))
+        policy = torch.ones((x.shape[0], 7)) / 7
+        var = F.softplus(self.fc_var(x)).add(self.eps)
+
         return value, var, policy
 
 
-def convert(x):
-    return torch.from_numpy(x.astype(np.float32))
+class Ensemble(nn.Module):
+
+    def __init__(self, n_models=5):
+
+        super(Ensemble, self).__init__()
+
+        self.n_models = n_models
+
+        self.nets = nn.ModuleList([Net() for i in range(n_models)])
+
+    def forward(self, x):
+
+        if self.training:
+            m = torch.randint(0, self.n_models-1, (1,))
+            return self.nets[m](x)
+        else:
+            results = [net(x) for net in self.nets]
+            value = torch.mean(torch.stack([r[0] for r in results]), dim=0)
+            var = torch.mean(torch.stack([r[1] for r in results]), dim=0)
+            policy = torch.mean(torch.stack([r[2] for r in results]), dim=0)
+            return value, var, policy
 
 
 class Dataset(D.Dataset):
@@ -103,7 +115,7 @@ class Dataset(D.Dataset):
 
 
 class Model:
-    def __init__(self, training=False, new=True, weighted=False, ewc=False, ewc_lambda=1, use_variance=True, use_policy=False, loss_type='mle', use_onnx=False, use_cuda=True):
+    def __init__(self, training=False, new=True, weighted=False, ewc=False, ewc_lambda=1, use_variance=True, use_policy=False, loss_type='kldiv', use_onnx=False, use_cuda=True):
 
         self.use_cuda = use_cuda
 
@@ -117,8 +129,10 @@ class Model:
         self.model = Net()
         if self.use_cuda:
             self.model = self.model.cuda()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-3, eps=1e-3, amsgrad=True)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-6, momentum=0.9, nesterov=True)
+        self.model = torch.jit.script(self.model)
+
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-2)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
 
@@ -137,33 +151,22 @@ class Model:
             self.l_func = lambda x, y: torch.abs(x-y)
         elif loss_type == 'mse':
             self.l_func = lambda x, y: (x - y) ** 2
-        elif loss_type == 'mle' or loss_type == 'kldiv':
-            self.l_func = lambda v_p, mu_p, v, mu: torch.log((v_p + eps) / (v + eps)) + (v + eps + (mu - mu_p) ** 2) / (v_p + eps) - 1
+        elif loss_type == 'kldiv':
+            self.l_func = lambda v_p, mu_p, v, mu: torch.log(v_p) + (v + (mu - mu_p) ** 2) / v_p - torch.log(v) - 1
+        elif loss_type == 'mle':
+            self.l_func = lambda v_p, mu_p, v, mu: torch.log(v_p) + (v + (mu - mu_p) ** 2) / v_p 
 
         self.use_onnx = use_onnx
 
     def _loss(self, batch, variance_clip=1.0):
 
-        state, value, variance, policy, weight = batch
+        batch_tensor = [torch.as_tensor(b, dtype=torch.float, device=self.device) for b in batch]
 
-        if type(state) is not torch.Tensor:
-            state = torch.from_numpy(batch[0])
-            value = torch.from_numpy(batch[1])
-            variance = torch.from_numpy(batch[2])
-            policy = torch.from_numpy(batch[3])
-            weight = torch.from_numpy(batch[4])
+        state, value, variance, policy, weight = batch_tensor
 
         variance.clamp_(min=variance_clip)
 
-        if self.use_cuda:
-            state = state.cuda()
-            value = value.cuda()
-            variance = variance.cuda()
-            policy = policy.cuda()
-            weight = weight.cuda()
-
         _v, _var, _p = self.model(state)
-        #print(_var.min().item(), variance.min().item(), flush=True)
         if self.loss_type == 'mle':
             loss = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
             return defaultdict(float, loss=loss[1], loss_std=loss[0])
@@ -277,8 +280,8 @@ class Model:
 
     def train_dataset(self,
                       dataset=None,
-                      batch_size=32,
-                      iters_per_validation=1000,
+                      batch_size=128,
+                      iters_per_validation=100,
                       early_stopping=True,
                       early_stopping_patience=10,
                       validation_fraction=0.1,
