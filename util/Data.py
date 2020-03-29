@@ -20,7 +20,7 @@ class State(tables.IsDescription):
     lines          = tables.Int32Col()
     line_stats     = tables.Int32Col(shape=(4,))
     score          = tables.Int32Col()
-    child_stats    = tables.Float32Col(shape=(6, n_actions))
+    child_stats    = tables.Float32Col(shape=(3, n_actions))
     cycle          = tables.Int32Col()
     value          = tables.Float32Col()
     variance       = tables.Float32Col()
@@ -62,18 +62,29 @@ class DataSaver:
 
     def add(self, episode, action, agent, game):
 
+        def check(key):
+            return hasattr(agent, key) and callable(getattr(agent, key))
+
         self.iter += 1
         self.state['episode'] = episode
         self.state['board'] = game.getState()
-        self.state['policy'] = agent.get_prob()
+        if check('get_prob'):
+            self.state['policy'] = agent.get_prob()
         self.state['action'] = action
         self.state['combo'] = game.combo
         self.state['lines'] = game.line_clears
         self.state['line_stats'] = game.line_stats
         self.state['score'] = game.score
-        self.state['child_stats'] = agent.get_stats()
+        if check('get_stats'):
+            self.state['child_stats'] = agent.get_stats()
         self.state['cycle'] = self.cycle
-        v, var = agent.get_value()
+        if check('get_value_and_variance'):
+            v, var = agent.get_value_and_variance()
+        elif check('get_value'):
+            v = agent.get_value()
+            var = 0
+        else:
+            v, var = 0, 0
         self.state['value'] = v
         self.state['variance'] = var
 

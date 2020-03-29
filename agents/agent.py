@@ -8,16 +8,38 @@ perr = dict(file=stderr, flush=True)
 
 class Agent:
 
-    def __init__(self, sims=100, init_nodes=500000, backend='pytorch',
-                 env=None, env_args=None, n_actions=7,
-                 saver=None, stochastic_inference=False,
-                 min_visits=30, benchmark=False, **kwargs):
+    def __init__(self, n_actions=7, benchmark=False, **kwargs):
+
+        self.episode = 0
+        self.n_actions = n_actions
+        self.benchmark = benchmark
+
+    def play(self):
+        raise NotImplementedError('update_root not implemented')
+
+    def get_action(self):
+        raise NotImplementedError('get_action not implemented')
+
+    def get_prob(self):
+        raise NotImplementedError('get_action not implemented')
+
+    def update_root(self, game):
+        raise NotImplementedError('update_root not implemented')
+
+    def close(self):
+        raise NotImplementedError('close not implemented')
+
+
+class TreeAgent(Agent):
+
+    def __init__(self, sims=100, max_nodes=500000, env=None, env_args=None,
+                 node_saver=None, projection=True, min_visits=30, **kwargs):
+
+        super().__init__(**kwargs)
 
         self.sims = sims
 
-        self.init_nodes = init_nodes
-
-        self.backend = backend
+        self.max_nodes = max_nodes
 
         self.env = env
         self.env_args = env_args
@@ -26,76 +48,43 @@ class Agent:
 
         self.min_visits = min_visits
 
-        self.n_actions = n_actions
+        self.node_saver = node_saver
 
-        self.saver = saver
-
-        self.stochastic_inference = stochastic_inference
-
-        self.benchmark = benchmark
+        self.projection = projection
 
         self.init_array()
-        self.init_model()
 
     def init_array(self):
 
-        self.arrs = {
-                'child': np.zeros((self.init_nodes, self.n_actions), dtype=np.int32),
-                'child_stats': np.zeros((self.init_nodes, 6, self.n_actions), dtype=np.float32),
-                'node_stats': np.zeros((self.init_nodes, 5), dtype=np.float32),
-                'node_ep': np.zeros((self.init_nodes, ), dtype=np.int32)
+        self.arrays = {
+                'child': np.zeros((self.max_nodes, self.n_actions), dtype=np.int32),
+                'visit': np.zeros(self.max_nodes, dtype=np.int32),
+                'value': np.zeros(self.max_nodes, dtype=np.float32),
+                'variance': np.zeros(self.max_nodes, dtype=np.float32),
+                'episode': np.zeros(self.max_nodes, dtype=np.int32),
+                'score': np.zeros(self.max_nodes, dtype=np.float32),
+                'end': np.zeros(self.max_nodes, dtype=bool)
                 }
 
-        self.game_arr = [self.env(*self.env_args) for i in range(self.init_nodes)]
+        self.game_arr = [self.env(*self.env_args) for i in range(self.max_nodes)]
 
-        self.available = deque(range(1, self.init_nodes), maxlen=self.init_nodes)
-        self.occupied = deque([0], maxlen=self.init_nodes)
+        self.available = deque(range(1, self.max_nodes), maxlen=self.max_nodes)
+        self.occupied = deque([0], maxlen=self.max_nodes)
 
         self.node_index_dict = dict()
 
-        self.max_nodes = self.init_nodes
-
-    def init_model(self):
-
-        if self.backend == 'pytorch':
-            from model.model_pytorch import Model
-            self.model = Model()
-            self.model.load()
-
-            if self.stochastic_inference:
-                self.inference = lambda state: self.model.inference_stochastic(state[None, None, :, :])
-            else:
-                self.inference = lambda state: self.model.inference(state[None, None, :, :])
-
-        else:
-            self.model = None
-
-    def evaluate(self, node):
-
-        state = node.game.getState()
-
-        return self.evaluate_state(state)
-
-    def evaluate_state(self, state):
-
-        v, var, p = self.inference(state)
-
-        return v[0][0], var[0][0], p[0]
-
-    def expand_nodes(self, n_nodes=10000):
-
-        print('\nWARNING: ADDING EXTRA NODES...', **perr)
-
-        for k, arr in self.arrs.items():
-            _s = arr.shape
-            _new_s = [_ for _ in _s]
-            _new_s[0] = n_nodes
-            _temp_arr = np.zeros(_new_s, dtype=arr.dtype)
-            self.arrs[k] = np.concatenate([arr, _temp_arr])
-
-        self.game_arr += [self.env(*self.env_args) for i in range(n_nodes)]
-        self.available += [i for i in range(self.max_nodes, self.max_nodes+n_nodes)]
-        self.max_nodes += n_nodes
+        if self.projection:
+            self.node_to_obs = np.zeros(self.max_nodes, dtype=np.int32)
+            self.obs_arrays = {
+                    'state': np.zeros((self.max_nodes, 22, 10), dtype=np.int8),
+                    'visit': np.zeros(self.max_nodes, dtype=np.int32),
+                    'value': np.zeros(self.max_nodes, dtype=np.float32),
+                    'variance': np.zeros(self.max_nodes, dtype=np.float32),
+                    'end': np.zeros(self.max_nodes, dtype=bool),
+                }
+            self.obs_index_dict = dict()
+            self.obs_available = deque(range(1, self.max_nodes), maxlen=self.max_nodes)
+            self.obs_occupied = deque([0], maxlen=self.max_nodes)
 
     def new_node(self, game):
 
@@ -103,30 +92,56 @@ class Agent:
 
         if not idx:
 
-            if self.available:
-                idx = self.available.pop()
-            else:
+            if not self.available:
                 self.remove_nodes()
-                if self.available:
-                    idx = self.available.pop()
-                else:
-                    self.expand_nodes()
-                    idx = self.available.pop()
+
+            idx = self.available.pop()
 
             _g = self.game_arr[idx]
 
             _g.copy_from(game)
 
-            self.arrs['node_ep'][idx] = self.episode
+            self.arrays['episode'][idx] = self.episode
+            self.arrays['score'][idx] = game.score
 
             self.node_index_dict[_g] = idx
 
             self.occupied.append(idx)
 
+            if self.projection:
+
+                state = _g.getState()
+                key = state.tobytes()
+
+                o_idx = self.obs_index_dict.get(key)
+                if not o_idx:
+
+                    o_idx = self.obs_available.pop()
+
+                    self.obs_arrays['state'][o_idx] = state
+                    self.obs_arrays['end'][o_idx] = _g.end
+
+                    self.obs_index_dict[key] = o_idx
+                    self.obs_occupied.append(o_idx)
+
+                self.node_to_obs[idx] = o_idx
+
         return idx
 
-    def mcts(self, root_index):
-        pass
+    def mcts(self):
+
+        raise NotImplementedError('mcts not implemented for this agent.')
+
+    def expand(self, game):
+
+        idx = self.new_node(game)
+
+        _g = self.g_tmp
+        child = self.arrays['child'][idx]
+        for i in range(self.n_actions):
+            _g.copy_from(game)
+            _g.play(i)
+            child[i] = self.new_node(_g)
 
     def play(self):
 
@@ -135,20 +150,31 @@ class Agent:
 
         return self.get_action()
 
-    def compute_stats(self):
-        _stats = np.zeros((6, self.n_actions))
+    def compute_stats(self, idx=None):
 
-        _childs = self.arrs['child'][self.root]
-        _ns = self.arrs['node_stats']
+        if idx is None:
+            idx = self.root
 
-        for i in range(self.n_actions):
-            _idx = _childs[i]
-            _stats[0][i] = _ns[_idx][0]
-            _stats[1][i] = _ns[_idx][1]
-            _stats[2][i] = 0
-            _stats[3][i] = _ns[_idx][1]
-            _stats[4][i] = _ns[_idx][3]
-            _stats[5][i] = _ns[_idx][4]
+        _stats = np.zeros((3, self.n_actions), dtype=np.float32)
+
+        child = [self.arrays['child'][idx][i] for i in range(self.n_actions)]
+        if self.projection:
+            _c = [self.node_to_obs[i] for i in child]
+            visit = self.obs_arrays['visit']
+            value = self.obs_arrays['value']
+            variance = self.obs_arrays['variance']
+        else:
+            _c = child
+            visit = self.arrays['visit']
+            value = self.arrays['value']
+            variance = self.arrays['variance']
+        score = self.arrays['score']
+        score_diff = [score[i] - score[idx] for i in child]
+
+        for i, c in enumerate(_c):
+            _stats[0][i] = visit[c]
+            _stats[1][i] = value[c] + score_diff[i]
+            _stats[2][i] = variance[c]
 
         return _stats
 
@@ -156,7 +182,7 @@ class Agent:
 
         self.stats = self.compute_stats()
 
-        return np.argmax(self.stats[3])
+        return np.argmax(self.stats[1])
 
     def get_prob(self):
 
@@ -166,89 +192,116 @@ class Agent:
 
         return np.copy(self.stats)
 
-    def get_value(self):
+    def get_value_and_variance(self, node=None):
 
-        print('\nWATNING: get_value not implemented for this agent', **perr)
+        if node is None:
+            node = self.root
 
-        return 0, 0
+        if self.projection:
+            o = self.node_to_obs[node]
+            return self.obs_arrays['value'][o], self.obs_arrays['variance'][o]
+        else:
+            return self.arrays['value'][node], self.arrays['variance'][node]
+
+    def update_available(self, occupied):
+
+        self.occupied.clear()
+        self.occupied.extend(occupied)
+
+        self.available.clear()
+        self.available.extend(i for i in range(self.max_nodes) if i not in occupied)
+
+        print('Number of occupied nodes: {}'.format(len(self.occupied)), **perr)
+        print('Number of available nodes: {}'.format(len(self.available)), **perr)
+
+        if self.projection:
+            _o = set(self.node_to_obs[i] for i in occupied)
+            self.obs_occupied.clear()
+            self.obs_occupied.extend(_o)
+            self.obs_available.clear()
+            self.obs_available.extend(i for i in range(self.max_nodes) if i not in _o)
+
+            print('Number of occupied observation nodes: {}'.format(len(self.obs_occupied)), **perr)
+            print('Number of available observation nodes: {}'.format(len(self.obs_available)), **perr)
+
+    def reset_arrays(self):
+
+        arr = self.game_arr
+        pop = self.node_index_dict.pop
+        for idx in self.available:
+            pop(arr[idx], None)
+
+        for arr in self.arrays.values():
+            arr[self.available] = 0
+
+        if self.projection:
+            arr = self.obs_arrays['state']
+            pop = self.obs_index_dict.pop
+            for idx in self.obs_available:
+                pop(arr[idx].tobytes(), None)
+
+            for arr in self.obs_arrays.values():
+                arr[self.obs_available] = 0
 
     def remove_nodes(self):
 
         print('\nWARNING: REMOVING UNUSED NODES...', **perr)
 
-        _c = get_all_childs(self.root, self.arrs['child'])
-        self.occupied.clear()
-        self.occupied.extend(_c)
-        self.available.clear()
-        self.available.extend(i for i in range(self.max_nodes) if i not in _c)
+        occupied = get_all_childs(self.root, self.arrays['child'])
 
-        print('Number of occupied nodes: {}'.format(len(self.occupied)), **perr)
-        print('Number of available nodes: {}\n'.format(len(self.available)), **perr)
+        self.update_available(occupied)
 
-        if self.saver:
+        if self.node_saver:
             self.save_nodes(self.available)
 
-        arrs = self.arrs.values()
-        for idx in self.available:
-            _g = self.game_arr[idx]
-
-            self.node_index_dict.pop(_g, None)
-
-        for arr in arrs:
-            arr[self.available] = 0
+        self.reset_arrays()
 
     def save_nodes(self, nodes_to_save):
 
-        saver = self.saver
+        saver = self.node_saver
 
-        node_stats = self.arrs['node_stats']
-
-        node_ep = self.arrs['node_ep']
+        episode = self.arrays['episode']
+        game = self.game_arr
+        visit = self.arrays['visit']
+        value = self.arrays['value']
+        variance = self.arrays['variance']
+        end = self.arrays['end']
 
         for idx in nodes_to_save:
 
-            if node_stats[idx][0] < self.min_visits:
+            if visit[idx] < self.min_visits or end[idx]:
                 continue
 
-            _tmp_stats = self.compute_stats(idx)
-            if _tmp_stats is False:
-                continue
+            stats = self.compute_stats(idx)
 
-            _g = self.game_arr[idx]
+            _g = game[idx]
 
-            v, var = self.get_value(idx)
-
-            saver.add_raw(node_ep[idx],
+            saver.add_raw(episode[idx],
                           _g.getState(),
-                          _tmp_stats[0] / _tmp_stats[0].sum(),
-                          np.argmax(_tmp_stats[1]),
+                          stats[0] / stats[0].sum(),
+                          np.argmax(stats[1]),
                           _g.combo,
                           _g.line_clears,
                           _g.line_stats,
                           _g.score,
-                          _tmp_stats,
-                          v,
-                          var)
+                          stats,
+                          value[idx],
+                          variance[idx])
 
     def save_occupied(self):
 
-        if self.saver:
+        if self.node_saver:
             self.save_nodes(self.occupied)
 
-    def set_root(self, game):
+    def update_root(self, game):
 
         self.root = self.new_node(game)
 
-    def update_root(self, game, episode=0):
-
-        self.episode = episode
-
-        self.set_root(game)
-
-        self.arrs['node_stats'][self.root][2] = game.score
+        if game.end:
+            self.episode += 1
 
     def close(self):
 
-        if self.saver:
+        if self.node_saver:
             self.save_occupied()
-            self.saver.close()
+            self.node_saver.close()

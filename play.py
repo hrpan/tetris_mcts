@@ -84,7 +84,7 @@ if args.agent_type:
             benchmark=args.benchmark,
             online=args.online)
     agent = Agent(**agent_args)
-    agent.update_root(game, ngames)
+    agent.update_root(game)
 else:
     agent = None
 
@@ -146,7 +146,7 @@ while True:
     game.play(action)
 
     if agent:
-        agent.update_root(game, ngames)
+        agent.update_root(game)
 
     if game.end:
         if args.interactive:
@@ -159,7 +159,7 @@ while True:
             ngames += 1
             print('Episode: {:>5} Score: {:>10} Lines Cleared: {:>10}'.format(ngames, game.score, game.line_clears), flush=True)
             game.reset()
-            agent.update_root(game, ngames)
+            agent.update_root(game)
         else:
             ngames += 1
 
@@ -170,7 +170,7 @@ while True:
                 break
             else:
                 game.reset()
-                agent.update_root(game, ngames)
+                agent.update_root(game)
 
 print(flush=True)
 

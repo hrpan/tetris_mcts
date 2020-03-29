@@ -1,24 +1,38 @@
-from agents.agent import Agent
-from agents.core import select_trace, backup_trace, policy_max
+from agents.agent import TreeAgent
+from agents.core import *
+from agents.core_projection import *
 
 from random import randint
 
 
-class Vanilla(Agent):
+class Vanilla(TreeAgent):
     def __init__(self, **kwargs):
 
-        kwargs['backend'] = None
-
-        super().__init__(**kwargs)
+        super().__init__(projection=False, **kwargs)
 
         self.g_tmp = self.env(*self.env_args)
 
     def mcts(self, root_index):
 
-        child = self.arrs['child']
-        node_stats = self.arrs['node_stats']
-
-        trace = select_trace(root_index, child, node_stats, policy=policy_max)
+        if self.projection:
+            trace = select_trace_obs(
+                root_index,
+                self.arrays['child'],
+                self.obs_arrays['visit'],
+                self.obs_arrays['value'],
+                self.obs_arrays['variance'],
+                self.arrays['score'],
+                self.node_to_obs,
+                low=5)
+        else:
+            trace = select_trace(
+                root_index,
+                self.arrays['child'],
+                self.arrays['visit'],
+                self.arrays['value'],
+                self.arrays['variance'],
+                self.arrays['score'],
+                low=5)
 
         leaf_index = trace[-1]
 
@@ -33,16 +47,29 @@ class Vanilla(Agent):
                 _act = randint(0, self.n_actions-1)
                 _g.play(_act)
 
-            value = _g.getScore()
+            value = _g.score
+            var = 1e3
+            
+            self.expand(leaf_game)
 
-            for i in range(self.n_actions):
-                _g.copy_from(leaf_game)
-                _g.play(i)
-                _n = self.new_node(_g)
-
-                child[leaf_index][i] = _n
-                node_stats[_n][2] = _g.getScore()
         else:
-            value = leaf_game.getScore()
+            value = leaf_game.score
+            var = 0
 
-        backup_trace(trace, node_stats, value)
+        if self.projection:
+            backup_trace_obs(
+                trace,
+                self.obs_arrays['visit'],
+                self.obs_arrays['value'],
+                self.obs_arrays['variance'],
+                self.node_to_obs,
+                self.arrays['score'],
+                value, var)
+        else:
+            backup_trace_welford_v2(
+                trace,
+                self.arrays['visit'],
+                self.arrays['value'],
+                self.arrays['variance'],
+                self.arrays['score'],
+                value, var)

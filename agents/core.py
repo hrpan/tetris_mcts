@@ -1,10 +1,9 @@
 import numpy as np
 import random
-
+from agents.policy import *
 from agents.special import std_quantile2, norm_quantile
 
 from numba import jit
-from numba import int32, float32
 
 jit_args = {'nopython': True, 'cache': False, 'fastmath': True}
 
@@ -22,6 +21,7 @@ def findZero(arr):
             return i
     return False
 
+
 @jit(**jit_args)
 def sample_from(weights):
     x = np.random.rand()
@@ -33,6 +33,7 @@ def sample_from(weights):
             return i
 
     return -1
+
 
 @jit(**jit_args)
 def backup_trace(trace, node_stats, value):
@@ -422,7 +423,7 @@ def backup_trace_welford(trace, node_stats, value):
 
 
 @jit(**jit_args)
-def backup_trace_welford_v2(trace, node_stats, value):
+def backup_trace_welford_v2(trace, visit, value, variance, score, _value, _variance):
     """
     numerical stable sample variance calculation based on welford's online algorithm
     [0]:count
@@ -430,16 +431,16 @@ def backup_trace_welford_v2(trace, node_stats, value):
     [3]:M2
     """
     for idx in trace:
-        v = value - node_stats[idx][2]
-        if node_stats[idx][0] == 0:
-            node_stats[idx][1] = v
+        v = _value - score[idx]
+        if visit[idx] == 0:
+            value[idx] = v
+            variance[idx] = _variance
         else:
-            delta = v - node_stats[idx][1]
-            node_stats[idx][1] += delta / (node_stats[idx][0] + 1)
-            delta2 = v - node_stats[idx][1]
-            node_stats[idx][3] = (node_stats[idx][3] * node_stats[idx][0] + delta * delta2) / (node_stats[idx][0] + 1)
-        node_stats[idx][0] += 1
-        node_stats[idx][4] = max(v, node_stats[idx][4])
+            delta = v - value[idx]
+            value[idx] += delta / (visit[idx] + 1)
+            delta2 = v - value[idx]
+            variance[idx] = (variance[idx] * visit[idx] + delta * delta2) / (visit[idx] + 1)
+        visit[idx] += 1
 
 
 @jit(**jit_args)
@@ -459,85 +460,16 @@ def backup_trace_with_variance(trace, node_stats, value, variance):
 
 
 @jit(**jit_args)
-def check_low(child_nodes, node_stats, n=1):
-    low_nodes = [c for c in child_nodes if node_stats[c][0] < n]
-    if low_nodes:
-        return low_nodes[np.random.randint(len(low_nodes))]
+def check_low(indices, count, n=1):
+    low = [i for i in indices if count[i] < n]
+    if low:
+        return low[np.random.randint(len(low))]
     else:
         return 0
 
 
 @jit(**jit_args)
-def policy_clt(child_nodes, node_stats, curr_reward):
-    stats = np.zeros((2, len(child_nodes)), dtype=np.float32)
-    n = 0
-    for i, c in enumerate(child_nodes):
-        n += node_stats[c][0]
-        stats[0][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
-        stats[1][i] = node_stats[c][3] / (node_stats[c][0] + eps)
-
-    _q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
-
-    return child_nodes[np.argmax(_q)]
-
-
-@jit(**jit_args)
-def policy_gauss(child_nodes, node_stats, curr_reward):
-    stats = np.zeros((2, len(child_nodes)), dtype=np.float32)
-    n = 0
-    for i, c in enumerate(child_nodes):
-        n += node_stats[c][0]
-        stats[0][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
-        stats[1][i] = node_stats[c][3]
-
-    _q = stats[0] + norm_quantile(n) * np.sqrt(stats[1])
-
-    return child_nodes[np.argmax(_q)]
-
-
-@jit(**jit_args)
-def policy_max(child_nodes, node_stats, curr_reward):
-    stats = np.zeros((2, len(child_nodes)), dtype=np.float32)
-    _max = 0.
-    for i, c in enumerate(child_nodes):
-        stats[0][i] = node_stats[c][0]
-        stats[1][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
-        _max = max(_max, node_stats[c][4])
-
-    _q = stats[1] + _max * np.sqrt(np.log(stats[0].sum()) / stats[0])
-
-    return child_nodes[np.argmax(_q)]
-
-@jit(**jit_args)
-def policy_mc(child_nodes, node_stats, curr_reward):
-    len_c = len(child_nodes)
-    stats = np.zeros((2, len_c), dtype=np.float32)
-    for i, c in enumerate(child_nodes):
-        stats[0][i] = node_stats[c][1] + node_stats[c][2] - curr_reward
-        stats[1][i] = node_stats[c][3]
-    _q = stats[0] + np.random.randn(len_c) * np.sqrt(stats[1])
-    return child_nodes[np.argmax(_q)]
-
-
-@jit(**jit_args)
-def policy_random(child_nodes, node_stats=None, curr_reward=None):
-    return child_nodes[np.random.randint(len(child_nodes))]
-
-
-@jit(**jit_args)
-def policy_greedy(child_nodes, node_stats, curr_reward):
-    c_max = 0
-    v_max = 0
-    for c in child_nodes:
-        v = node_stats[c][1] + node_stats[c][2] - curr_reward
-        if v >= v_max:
-            v_max = v
-            c_max = c
-    return c_max
-
-
-@jit(**jit_args)
-def select_trace(index, child, node_stats, policy=policy_clt, low=1):
+def select_trace(index, child, visit, value, variance, score, policy=policy_clt, low=1):
 
     trace = []
 
@@ -545,21 +477,23 @@ def select_trace(index, child, node_stats, policy=policy_clt, low=1):
 
         trace.append(index)
 
-        _child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
-        _child_nodes = list(set(_child_nodes))
+        child_nodes = [child[index][i] for i in range(n_actions) if child[index][i] != 0]
+        child_nodes = list(set(child_nodes))
 
-        len_c = len(_child_nodes)
-
-        if len_c == 0:
+        if not child_nodes:
             break
 
-        r = node_stats[index][2]
+        n_index = check_low(child_nodes, visit, n=low)
 
-        index = check_low(_child_nodes, node_stats, n=low)
-
-        if not index:
-            index = policy(_child_nodes, node_stats, r)
-
+        if not n_index:
+            _tmp = np.empty((3, len(child_nodes)))
+            for i, c in enumerate(child_nodes):
+                _tmp[0][i] = visit[c]
+                _tmp[1][i] = value[c] + score[c] - score[index]
+                _tmp[2][i] = variance[c]
+            index = policy(child_nodes, _tmp[0], _tmp[1], _tmp[2])
+        else:
+            index = n_index
     return np.array(trace, dtype=np.int32)
 
 
