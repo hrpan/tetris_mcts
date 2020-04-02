@@ -3,7 +3,7 @@ from collections import Counter, deque
 from agents.agent import TreeAgent
 from agents.core import *
 from agents.core_projection import *
-from model.model_pytorch import Model
+from model.model_vv import Model_VV as Model
 from sys import stderr
 
 eps = 1e-7
@@ -43,7 +43,7 @@ class ValueSim(TreeAgent):
 
     def evaluate_state(self, state):
 
-        v, var, p = self.inference(state)
+        v, var = self.inference(state)
 
         return v[0][0], var[0][0]
 
@@ -159,7 +159,7 @@ class ValueSim(TreeAgent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=500, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000, dump_data=True):
+    def train_nodes(self, batch_size=512, iters_per_val=500, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000, dump_data=True):
 
         print('Training...', **perr)
 
@@ -196,7 +196,7 @@ class ValueSim(TreeAgent):
         while fails < patience and iters < max_iters:
             l_avg = 0
             for it in range(iters_per_val):
-                b_idx = np.random.choice(d_size - val_size, size=batch_size)
+                b_idx = np.random.choice(d_size - val_size, size=batch_size, replace=False)
                 batch = [states[b_idx], values[b_idx], variance[b_idx], p_dummy, weights[b_idx]]
                 loss = self.model.train(batch)
                 l_avg += loss['loss']
