@@ -31,7 +31,7 @@ print(np.average((y[0] - y_flip[0]) ** 2))
 print(np.average((y[1] - y_flip[1]) ** 2))
 
 print('lr', m.optimizer.param_groups[0]['lr'])
-keys = ['exp_avg_sq', 'max_exp_avg_sq', 'exp_avg_sq_last', 'momentum_buffer', 'exp_inf']
+keys = ['exp_avg_sq', 'max_exp_avg_sq', 'exp_avg_sq_last', 'momentum_buffer', 'exp_inf', 'square_avg']
 for g in m.optimizer.param_groups:
     for p in g['params']:
         
