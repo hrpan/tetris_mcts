@@ -162,5 +162,21 @@ def backup_trace_obs_exp_moving(trace, visit, value, variance, n_to_o, score, _v
         else:
             _v = v - value[obs]
             value[obs] += alpha * _v
-            variance[obs] = (1 - alpha) * (variance[obs] + alpha *_v * _v)
+            variance[obs] = (1 - alpha) * (variance[obs] + alpha * _v * _v)
         visit[obs] += 1
+
+
+@jit(**jit_args)
+def backup_trace_value_policy_obs(trace, child, visit, value, policy, n_to_o, score, _value):
+    for idx in trace[::-1]:
+        v = _value - score[idx]
+        obs = n_to_o[idx]
+        visit[obs] += 1
+        value[obs] += (v - value[obs]) / visit[obs]
+        vmax, amax = -9999999, 0
+        for i, c in enumerate(child[idx]):
+            _o = n_to_o[c]
+            _v = value[_o] + score[c] - score[idx]
+            if _v > vmax:
+                vmax, amax = _v, i
+        policy[obs][amax] += 1

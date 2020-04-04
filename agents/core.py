@@ -498,6 +498,22 @@ def select_trace(index, child, visit, value, variance, score, policy=policy_clt,
 
 
 @jit(**jit_args)
+def select_trace_with_policy(index, child, policy):
+
+    trace = []
+
+    while True:
+
+        trace.append(index)
+
+        index = child[index][sample_from(policy[index])]
+
+        if index == 0:
+            break
+    return np.array(trace, dtype=np.int32)
+
+
+@jit(**jit_args)
 def backup_trace_by_policy(trace, node_stats, child, policy=policy_greedy):
 
     for idx in trace:
@@ -513,3 +529,17 @@ def backup_trace_by_policy(trace, node_stats, child, policy=policy_greedy):
         node_stats[idx][1] = node_stats[index][2] - node_stats[idx][2] + node_stats[index][1]
         node_stats[idx][3] = node_stats[index][3]
         node_stats[idx][4] = max(node_stats[idx][1], node_stats[idx][4])
+
+
+@jit(**jit_args)
+def backup_trace_value_policy(trace, child, visit, value, action, score, _value):
+    for idx in trace[::-1]:
+        v = _value - score[idx]
+        visit[idx] += 1
+        value[idx] += (v - value[idx]) / visit[idx]
+        vmax, amax = -9999999, 0
+        for i, c in enumerate(child[idx]):
+            _v = value[c] + score[c] - score[idx]
+            if _v > vmax:
+                vmax, amax = _v, i
+        policy[idx][amax] += 1
