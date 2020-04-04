@@ -145,8 +145,7 @@ class TreeAgent(Agent):
 
     def play(self):
 
-        for i in range(self.sims):
-            self.mcts(self.root)
+        self.mcts(self.root, self.sims)
 
         return self.get_action()
 

@@ -1,5 +1,4 @@
 import numpy as np
-from collections import Counter, deque
 from agents.agent import TreeAgent
 from agents.core import *
 from agents.core_projection import *
@@ -47,57 +46,49 @@ class ValueSim(TreeAgent):
 
         return v[0][0], var[0][0]
 
-    def mcts(self, root_index):
+    def mcts(self, root_index, sims):
+
+        child = self.arrays['child']
+        score = self.arrays['score']
 
         if self.projection:
-            trace = select_trace_obs(
-                root_index,
-                self.arrays['child'],
-                self.obs_arrays['visit'],
-                self.obs_arrays['value'],
-                self.obs_arrays['variance'],
-                self.arrays['score'],
-                self.node_to_obs)
+            visit = self.obs_arrays['visit']
+            value = self.obs_arrays['value']
+            variance = self.obs_arrays['variance']
+            n_to_o = self.node_to_obs
+            selection = lambda: select_trace_obs(
+                    root_index, child,
+                    visit, value, variance,
+                    score, n_to_o)
+            backup = lambda trace, _value, _variance: backup_trace_obs(
+                    trace, visit, value, variance,
+                    n_to_o, score, _value, _variance)
         else:
-            trace = select_trace(
-                root_index,
-                self.arrays['child'],
-                self.arrays['visit'],
-                self.arrays['value'],
-                self.arrays['variance'],
-                self.arrays['score'])
+            visit = self.arrays['visit']
+            value = self.arrays['value']
+            variance = self.arrays['variance']
+            selection = lambda: select_trace(
+                    root_index, child, visit, value, variance, score)
+            backup = lambda trace, _value, _variance: backup_trace_obs(
+                    trace, visit, value, variance, score, _value, _variance)
 
-        leaf_index = trace[-1]
+        for i in range(sims):
+            trace = selection()
 
-        leaf_game = self.game_arr[leaf_index]
+            leaf_index = trace[-1]
 
-        value, var = leaf_game.score, 0
-        if not leaf_game.end:
+            leaf_game = self.game_arr[leaf_index]
 
-            v, var = self.evaluate_state(leaf_game.getState())
+            _value, _variance = leaf_game.score, 0
+            if not leaf_game.end:
 
-            value += v
+                v, _variance = self.evaluate_state(leaf_game.getState())
 
-            self.expand(leaf_game)
+                _value += v
 
-        if self.projection:
-            backup_trace_obs_exp_moving(
-                trace,
-                self.obs_arrays['visit'],
-                self.obs_arrays['value'],
-                self.obs_arrays['variance'],
-                self.node_to_obs,
-                self.arrays['score'],
-                value, var)
-            #backup_trace_obs(trace, _node_stats, value, o_stats, n_to_o)
-        else:
-            backup_trace_welford_v2(
-                trace,
-                self.arrays['visit'],
-                self.arrays['value'],
-                self.arrays['variance'],
-                self.arrays['score'],
-                value, var)
+                self.expand(leaf_game)
+
+            backup(trace, _value, _variance)
 
     def remove_nodes(self):
 
@@ -159,13 +150,12 @@ class ValueSim(TreeAgent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=512, iters_per_val=500, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000, dump_data=True):
+    def train_nodes(self, batch_size=128, iters_per_val=500, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000, dump_data=True):
 
         print('Training...', **perr)
 
         states, values, variance, weights = self.memory
         weights = weights / weights[:self.memory_index].mean()
-        p_dummy = np.empty((batch_size, 7), dtype=np.float32)
 
         d_size = self.memory_index
         m_size = min((self.n_trains + 1) * growth_rate, self.memory_size)
@@ -186,7 +176,6 @@ class ValueSim(TreeAgent):
                 states[d_size-val_size:d_size],
                 values[d_size-val_size:d_size],
                 variance[d_size-val_size:d_size],
-                np.empty((val_size, 7), dtype=np.float32),
                 weights[d_size-val_size:d_size]]
 
         print('Training data size: {}    Validation data size: {}'.format(d_size-val_size, val_size), **perr)
@@ -197,7 +186,7 @@ class ValueSim(TreeAgent):
             l_avg = 0
             for it in range(iters_per_val):
                 b_idx = np.random.choice(d_size - val_size, size=batch_size, replace=False)
-                batch = [states[b_idx], values[b_idx], variance[b_idx], p_dummy, weights[b_idx]]
+                batch = [states[b_idx], values[b_idx], variance[b_idx], weights[b_idx]]
                 loss = self.model.train(batch)
                 l_avg += loss['loss']
             iters += iters_per_val
