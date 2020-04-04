@@ -39,7 +39,7 @@ class ValueSim(TreeAgent):
         self.model = Model()
         self.model.load()
 
-        self.inference = lambda stats: self.model.inference(stats[None, None, :, :])
+        self.inference = lambda state: self.model.inference(state[None, None, :, :])
 
     def evaluate_state(self, state):
 
