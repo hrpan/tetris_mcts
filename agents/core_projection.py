@@ -130,25 +130,20 @@ def backup_trace_obs_by_policy(trace, child, visit, value, variance, score, n_to
 
 
 @jit(**jit_args)
-def backup_trace_obs(trace, visit, value, variance, n_to_o, score, _value, _variance):
-    """
-    numerical stable sample variance calculation based on welford's online algorithm
-    [0]:count
-    [1]:mean
-    [3]:M2
-    """
-    for idx in trace:
-        v = _value - score[idx]
+def backup_trace_obs(trace, visit, value, variance, n_to_o, score, _value, _variance, gamma=0.999):
+    for idx in trace[::-1]:
+        _value -= score[idx]
         obs = n_to_o[idx]
         if visit[obs] == 0:
-            value[obs] = v
+            value[obs] = _value
             variance[obs] = _variance
         else:
-            delta = v - value[obs]
+            delta = _value - value[obs]
             value[obs] += delta / (visit[obs] + 1)
-            delta2 = v - value[obs]
+            delta2 = _value - value[obs]
             variance[obs] = (variance[obs] * visit[obs] + delta * delta2) / (visit[obs] + 1)
         visit[obs] += 1
+        _value = gamma * _value + score[idx]
 
 
 @jit(**jit_args)
