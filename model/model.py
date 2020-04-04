@@ -89,7 +89,7 @@ class Model:
 
         return norm ** (1/p)
 
-    def training_step(self, batch):
+    def train(self, batch):
 
         self.model.train()
 
