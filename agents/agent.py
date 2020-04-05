@@ -156,7 +156,7 @@ class TreeAgent(Agent):
 
         _stats = np.zeros((3, self.n_actions), dtype=np.float32)
 
-        child = [self.arrays['child'][idx][i] for i in range(self.n_actions)]
+        child = self.arrays['child'][idx]
         if self.projection:
             _c = [self.node_to_obs[i] for i in child]
             visit = self.obs_arrays['visit']
