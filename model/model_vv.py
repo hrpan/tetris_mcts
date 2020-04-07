@@ -7,11 +7,12 @@ import random
 import torch_optimizer as toptim
 from collections import defaultdict, OrderedDict
 from model.model import convOutShape, Model
+from model.yogi import Yogi
 
 
 class Net(nn.Module):
 
-    def __init__(self, input_shape=(22, 10), eps=.1):
+    def __init__(self, input_shape=(22, 10), eps=1.):
         super(Net, self).__init__()
 
         kernel_size = 3
@@ -102,7 +103,7 @@ class Model_VV(Model):
         self.model = torch.jit.script(self.model)
 
         #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-2, weight_decay=1e-4)
-        self.optimizer = toptim.Yogi(self.model.parameters(), lr=1e-3, eps=1e-3)
+        self.optimizer = Yogi(self.model.parameters(), lr=1e-4, eps=1e-3)
         #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.95, nesterov=True)
 
         self.scheduler = None
