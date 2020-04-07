@@ -166,7 +166,7 @@ class Model:
 
     def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
                    early_stopping=True, early_stopping_patience=10,
-                   early_stopping_threshold=1., max_iters=1000000):
+                   early_stopping_threshold=1., max_iters=100000):
 
         data_size = len(data[0])
         validation_size = int(data_size * validation_fraction)
