@@ -2,11 +2,10 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.utils as U
 import numpy as np
 import random
 import torch_optimizer as toptim
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from model.model import convOutShape, Model
 
 
@@ -18,44 +17,40 @@ class Net(nn.Module):
         kernel_size = 3
         stride = 1
         filters = 32
-        bias = True
+        bias = False
 
-        self.conv1 = nn.Conv2d(1, filters, kernel_size, stride, bias=bias)
-        #self.norm1 = nn.BatchNorm2d(filters)
+        self.activation = nn.ReLU(inplace=True)
+
         _shape = convOutShape(input_shape, kernel_size, stride)
-
-        self.conv2 = nn.Conv2d(filters, filters, kernel_size, stride, bias=bias)
-        #self.norm2 = nn.BatchNorm2d(filters)
         _shape = convOutShape(_shape, kernel_size, stride)
-
         flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc = 128
-        self.fc1 = nn.Linear(flat_in, n_fc)
-        flat_out = n_fc
+        self.head = nn.Sequential(OrderedDict([
+                ('conv1', nn.Conv2d(1, filters, kernel_size, stride, bias=bias)),
+                ('norm1', nn.BatchNorm2d(filters)),
+                ('act1', self.activation),
+                ('conv2', nn.Conv2d(filters, filters, kernel_size, stride, bias=bias)),
+                ('norm2', nn.BatchNorm2d(filters)),
+                ('act2', self.activation),
+                ('flatten', nn.Flatten()),
+                ('fc1', nn.Linear(flat_in, 128)),
+                ('act4', self.activation),
+                ('fc_out', nn.Linear(128, 2)),
+                #('act_out', nn.Softplus()),
+            ]))
 
-        self.fc_v = nn.Linear(flat_out, 1)
-        self.fc_var = nn.Linear(flat_out, 1)
-        torch.nn.init.normal_(self.fc_v.bias, mean=5e0, std=.1)
-        torch.nn.init.normal_(self.fc_var.bias, mean=1e1, std=.1)
+        self.head.fc_out.bias.data[0] = 1e2
+        self.head.fc_out.bias.data[1] = 1e3
+
         self.eps = nn.Parameter(torch.tensor([eps]), requires_grad=False)
 
     def forward(self, x):
-        act = F.relu
-        #x = act(self.norm1(self.conv1(x)), inplace=True)
-        #x = act(self.norm2(self.conv2(x)), inplace=True)
-        x = act(self.conv1(x), inplace=True)
-        x = act(self.conv2(x), inplace=True)
-        x = x.view(x.shape[0], -1)
 
-        x = act(self.fc1(x), inplace=True)
+        x = self.head(x)
 
-        value = torch.exp(self.fc_v(x))
-        #value = self.fc_v(x)
-        var = torch.exp(self.fc_var(x)).add(self.eps)
-        #var = F.softplus(self.fc_var(x)).add(self.eps)
+        value, variance = x.split(1, dim=1)
 
-        return value, var
+        return value, F.softplus(variance).add(self.eps)
 
 
 class Ensemble(nn.Module):
@@ -107,8 +102,8 @@ class Model_VV(Model):
             self.model = self.model.cuda()
         self.model = torch.jit.script(self.model)
 
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-2, amsgrad=True)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-3, weight_decay=1e-4)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.95, nesterov=True)
 
         self.scheduler = None
 
@@ -121,7 +116,6 @@ class Model_VV(Model):
         variance.clamp_(min=variance_clip)
 
         _v, _var = self.model(state)
-        #print(torch.max(torch.abs(_v - value)).item(), torch.min(_var).item(), end='')
         if self.loss_type == 'mle':
             loss = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
             return defaultdict(float, loss=loss[1], loss_std=loss[0])

@@ -1,5 +1,6 @@
 import torch
 import torch.utils.data as D
+import torch.nn.utils as U
 import numpy as np
 import os
 from collections import defaultdict
@@ -42,13 +43,11 @@ class Model:
         else:
             self.device = torch.device('cpu')
 
-        self.training = training
-
         self._init_model()
 
-    def compute_loss(self, batch, chunksize=512):
+        self.training(training)
 
-        self.model.eval()
+    def compute_loss(self, batch, chunksize=512):
 
         _tmp = defaultdict(list)
         d_size = len(batch[0])
@@ -89,16 +88,16 @@ class Model:
 
         return norm ** (1/p)
 
-    def train(self, batch):
-
-        self.model.train()
+    def train(self, batch, grad_clip=0):
 
         self.optimizer.zero_grad()
 
         loss = self._loss(batch)
 
         loss['loss'].backward()
-        #U.clip_grad_norm_(self.model.parameters(), 10.0)
+
+        if grad_clip > 0:
+            U.clip_grad_norm_(self.model.parameters(), grad_clip)
 
         self.optimizer.step()
 
@@ -106,9 +105,14 @@ class Model:
 
         return result
 
-    def inference(self, batch):
+    def training(self, mode=True):
 
-        self.model.eval()
+        if mode:
+            self.model.train()
+        else:
+            self.model.eval()
+
+    def inference(self, batch):
 
         b = torch.as_tensor(batch, dtype=torch.float, device=self.device)
 

@@ -1,7 +1,7 @@
 import numpy as np
 from agents.agent import TreeAgent
-from agents.core import *
-from agents.core_projection import *
+from agents.core import select_trace, backup_trace, get_all_childs
+from agents.core_projection import select_trace_obs, backup_trace_obs
 from model.model_vv import Model_VV as Model
 from sys import stderr
 
@@ -11,7 +11,7 @@ perr = dict(file=stderr, flush=True)
 
 class ValueSim(TreeAgent):
 
-    def __init__(self, online=True, memory_size=250000, min_visits_to_store=10, **kwargs):
+    def __init__(self, online=True, memory_size=250000, min_visits_to_store=10, gamma=0.99, **kwargs):
 
         super().__init__(max_nodes=100000, **kwargs)
 
@@ -35,8 +35,11 @@ class ValueSim(TreeAgent):
 
         self.min_visits_to_store = min_visits_to_store
 
+        self.gamma = gamma
+
         self.model = Model()
         self.model.load()
+        self.model.training(False)
 
         self.inference = lambda state: self.model.inference(state[None, None, :, :])
 
@@ -56,24 +59,21 @@ class ValueSim(TreeAgent):
             value = self.obs_arrays['value']
             variance = self.obs_arrays['variance']
             n_to_o = self.node_to_obs
-            selection = lambda: select_trace_obs(
-                    root_index, child,
-                    visit, value, variance,
-                    score, n_to_o)
-            backup = lambda trace, _value, _variance: backup_trace_obs(
-                    trace, visit, value, variance,
-                    n_to_o, score, _value, _variance)
+            s_args = [root_index, child, visit, value, variance, score, n_to_o]
+            selection = select_trace_obs
+            b_args = [None, visit, value, variance, n_to_o, score, None, None, self.gamma]
+            backup = backup_trace_obs
         else:
             visit = self.arrays['visit']
             value = self.arrays['value']
             variance = self.arrays['variance']
-            selection = lambda: select_trace(
-                    root_index, child, visit, value, variance, score)
-            backup = lambda trace, _value, _variance: backup_trace_obs(
-                    trace, visit, value, variance, score, _value, _variance)
+            s_args = [root_index, child, visit, value, variance, score]
+            selection = select_trace
+            b_args = [None, visit, value, variance, score, None, None, self.gamma]
+            backup = backup_trace
 
         for i in range(sims):
-            trace = selection()
+            trace = selection(*s_args)
 
             leaf_index = trace[-1]
 
@@ -87,8 +87,10 @@ class ValueSim(TreeAgent):
                 _value += v
 
                 self.expand(leaf_game)
-
-            backup(trace, _value, _variance)
+            b_args[0] = trace
+            b_args[-3] = _value
+            b_args[-2] = _variance
+            backup(*b_args)
 
     def remove_nodes(self):
 
@@ -170,7 +172,6 @@ class ValueSim(TreeAgent):
 
         self.n_trains += 1
 
-        self.model.training = True
         val_size = int(d_size * val_fraction)
         batch_val = [
                 states[d_size-val_size:d_size],
@@ -184,6 +185,7 @@ class ValueSim(TreeAgent):
         l_val_min = float('inf')
         while fails < patience and iters < max_iters:
             l_avg = 0
+            self.model.training(True)
             for it in range(iters_per_val):
                 b_idx = np.random.choice(d_size - val_size, size=batch_size, replace=False)
                 batch = [states[b_idx], values[b_idx], variance[b_idx], weights[b_idx]]
@@ -191,6 +193,7 @@ class ValueSim(TreeAgent):
                 l_avg += loss['loss']
             iters += iters_per_val
             l_avg /= iters_per_val
+            self.model.training(False)
             l_val = self.model.compute_loss(batch_val)
             l_val_mean, l_val_std = l_val['loss'], l_val['loss_std'] / val_size ** 0.5
             if l_val_mean - l_val_min < l_val_std * loss_threshold:
@@ -204,7 +207,7 @@ class ValueSim(TreeAgent):
 
         self.model.load()
         self.model.update_scheduler()
-        self.model.training = False
+        self.model.training(False)
 
         self.memory_index = 0
 
