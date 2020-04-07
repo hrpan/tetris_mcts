@@ -184,11 +184,15 @@ class Model:
             fails = 0
             loss_val_min = float('inf')
 
+        loss_avg, alpha = 0, 0.01
+
         self.training(True)
         for iters in range(max_iters):
             b_idx = np.random.choice(data_size-validation_size, size=batch_size)
             batch = [b[b_idx] for b in batch_training]
             loss = self.train(batch)
+
+            loss_avg += alpha * (loss['loss'] - loss_avg)
 
             if (iters + 1) % iters_per_val == 0:
                 self.training(False)
@@ -197,7 +201,7 @@ class Model:
                 loss_val_mean, loss_val_std = loss_val['loss'], loss_val['loss_std']
                 loss_val_std /= validation_size ** 0.5
 
-                print('Iteration:{:7d}  training loss:{:.3f}  validation loss:{:.3f}±{:.3f}'
+                print('Iteration:{:7d}  training loss:{:6.3f}  validation loss:{:6.3f}±{:6.3f}'
                       .format(iters+1, loss['loss'], loss_val_mean, loss_val_std), **perr)
 
                 if early_stopping:
