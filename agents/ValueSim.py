@@ -11,7 +11,7 @@ perr = dict(file=stderr, flush=True)
 
 class ValueSim(TreeAgent):
 
-    def __init__(self, online=True, memory_size=250000, min_visits_to_store=10, gamma=0.99, **kwargs):
+    def __init__(self, online=True, memory_size=250000, min_visits_to_store=10, gamma=0.99, memory_growth_rate=2500, **kwargs):
 
         super().__init__(max_nodes=100000, **kwargs)
 
@@ -32,6 +32,8 @@ class ValueSim(TreeAgent):
             self.memory_index = 0
 
             self.n_trains = 0
+
+            self.memory_growth_rate = memory_growth_rate
 
         self.min_visits_to_store = min_visits_to_store
 
@@ -152,15 +154,14 @@ class ValueSim(TreeAgent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, batch_size=128, iters_per_val=500, loss_threshold=1, val_fraction=0.1, patience=10, growth_rate=5000, max_iters=100000, dump_data=True):
+    def train_nodes(self, growth_rate=2500, dump_data=True):
 
         print('Training...', **perr)
 
         states, values, variance, weights = self.memory
-        weights = weights / weights[:self.memory_index].mean()
 
         d_size = self.memory_index
-        m_size = min((self.n_trains + 1) * growth_rate, self.memory_size)
+        m_size = min((self.n_trains + 1) * self.memory_growth_rate, self.memory_size)
         if d_size >= m_size:
             print('Enough training data ({} >= {}), proceed to training.'.format(d_size, m_size), **perr)
         else:
@@ -172,41 +173,7 @@ class ValueSim(TreeAgent):
 
         self.n_trains += 1
 
-        val_size = int(d_size * val_fraction)
-        batch_val = [
-                states[d_size-val_size:d_size],
-                values[d_size-val_size:d_size],
-                variance[d_size-val_size:d_size],
-                weights[d_size-val_size:d_size]]
-
-        print('Training data size: {}    Validation data size: {}'.format(d_size-val_size, val_size), **perr)
-
-        iters = fails = 0
-        l_val_min = float('inf')
-        while fails < patience and iters < max_iters:
-            l_avg = 0
-            self.model.training(True)
-            for it in range(iters_per_val):
-                b_idx = np.random.choice(d_size - val_size, size=batch_size, replace=False)
-                batch = [states[b_idx], values[b_idx], variance[b_idx], weights[b_idx]]
-                loss = self.model.train(batch)
-                l_avg += loss['loss']
-            iters += iters_per_val
-            l_avg /= iters_per_val
-            self.model.training(False)
-            l_val = self.model.compute_loss(batch_val)
-            l_val_mean, l_val_std = l_val['loss'], l_val['loss_std'] / val_size ** 0.5
-            if l_val_mean - l_val_min < l_val_std * loss_threshold:
-                if l_val_mean < l_val_min:
-                    self.model.save(verbose=False)
-                    l_val_min = l_val_mean
-                fails = 0
-            else:
-                fails += 1
-            print('Iteration:{:6d}  training loss:{:.3f} validation loss:{:.3f}±{:.3f}'.format(iters, l_avg, l_val_mean, l_val_std), **perr)
-
-        self.model.load()
-        self.model.update_scheduler()
+        self.model.train_data([d[:d_size] for d in self.memory])
         self.model.training(False)
 
         self.memory_index = 0
