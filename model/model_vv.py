@@ -40,7 +40,7 @@ class Net(nn.Module):
             ]))
 
         self.head.fc_out.bias.data[0] = 1e2
-        self.head.fc_out.bias.data[1] = 1e3
+        self.head.fc_out.bias.data[1] = 1e2
 
         self.eps = nn.Parameter(torch.tensor([eps]), requires_grad=False)
 
@@ -101,7 +101,8 @@ class Model_VV(Model):
             self.model = self.model.cuda()
         self.model = torch.jit.script(self.model)
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-3, weight_decay=1e-4)
+        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-2, weight_decay=1e-4)
+        self.optimizer = toptim.Yogi(self.model.parameters(), lr=1e-3, eps=1e-3)
         #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.95, nesterov=True)
 
         self.scheduler = None
@@ -146,50 +147,6 @@ class Model_VV(Model):
             return ewc_loss
         else:
             return torch.tensor([0.], dtype=torch.float32, requires_grad=True, device=self.device)
-
-
-#    def train_dataset(self,
-#                      dataset=None,
-#                      batch_size=128,
-#                      iters_per_validation=100,
-#                      early_stopping=True,
-#                      early_stopping_patience=10,
-#                      validation_fraction=0.1,
-#                      num_workers=2):
-#
-#        validation_size = int(len(dataset[0]) * validation_fraction) + 1
-#        training_set = Dataset([d[:-validation_size] for d in dataset])
-#        training_loader = D.DataLoader(
-#                training_set,
-#                batch_size=batch_size,
-#                sampler=D.RandomSampler(training_set, replacement=True),
-#                pin_memory=True,
-#                num_workers=2)
-#        validation_set = Dataset([d[-validation_size:] for d in dataset])
-#        validation_loader = D.DataLoader(
-#                validation_set,
-#                batch_size=1024,
-#                num_workers=2)
-#
-#        fail = 0
-#        #states, values, variance, policy, weights
-#        loss_avg = 0
-#        idx = 0
-#        while True:
-#            for batch in training_loader:
-#                idx += 1
-#                l = self.train(batch)
-#                loss_avg += l[0]
-#                if (idx + 1) % iters_per_validation == 0:
-#
-#                    l_val = 0
-#                    """
-#                    for b in validation_loader:
-#                        l = self.compute_loss(b)
-#                        l_val += l[0] * len(b[0])
-#                    l_val /= validation_size
-#                    """
-#                    print(loss_avg/iters_per_validation, l_val)
 
     def get_fisher_from_adam(self):
 

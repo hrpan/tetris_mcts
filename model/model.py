@@ -3,11 +3,14 @@ import torch.utils.data as D
 import torch.nn.utils as U
 import numpy as np
 import os
+from sys import stderr
 from collections import defaultdict
 
 n_actions = 7
 
 EXP_PATH = './pytorch_model/'
+
+perr = dict(file=stderr, flush=True)
 
 
 def convOutShape(shape_in, kernel_size, stride):
@@ -160,6 +163,57 @@ class Model:
                 self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         else:
             print('Checkpoint not found, using default model', flush=True)
+
+    def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
+                   early_stopping=True, early_stopping_patience=10,
+                   early_stopping_threshold=1., max_iters=1000000):
+
+        data_size = len(data[0])
+        validation_size = int(data_size * validation_fraction)
+
+        weights = data[-1] / data[-1].mean()
+
+        data[-1] = weights
+
+        batch_training = [d[:-validation_size] for d in data]
+        batch_validation = [d[-validation_size:] for d in data]
+
+        print('Training data size: {}    Validation data size: {}'.format(data_size-validation_size, validation_size), **perr)
+
+        if early_stopping:
+            fails = 0
+            loss_val_min = float('inf')
+
+        self.training(True)
+        for iters in range(max_iters):
+            b_idx = np.random.choice(data_size-validation_size, size=batch_size)
+            batch = [b[b_idx] for b in batch_training]
+            loss = self.train(batch)
+
+            if iters % iters_per_val == 0:
+                self.training(False)
+                loss_val = self.compute_loss(batch_validation)
+                self.training(True)
+                loss_val_mean, loss_val_std = loss_val['loss'], loss_val['loss_std']
+                loss_val_std /= validation_size ** 0.5
+
+                if early_stopping:
+                    if loss_val_mean - loss_val_min < loss_val_std * early_stopping_threshold:
+                        fails = 0
+                        if loss_val_mean < loss_val_min:
+                            self.save(verbose=False)
+                            loss_val_min = loss_val_mean
+                    else:
+                        fails += 1
+                print('Iteration:{:7d}  training loss:{:.3f}  validation loss:{:.3f}±{:.3f}'
+                      .format(iters, loss['loss'], loss_val_mean, loss_val_std), **perr)
+
+        if early_stopping:
+            self.load()
+        else:
+            self.save()
+
+        self.training(False)
 
     def _init_model(self):
         raise NotImplementedError('_init_model not implemented')
