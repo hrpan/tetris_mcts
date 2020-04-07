@@ -141,7 +141,7 @@ def backup_trace_obs(trace, visit, value, variance, n_to_o, score, _value, _vari
             delta = _value - value[obs]
             value[obs] += delta / (visit[obs] + 1)
             delta2 = _value - value[obs]
-            variance[obs] = (variance[obs] * visit[obs] + delta * delta2) / (visit[obs] + 1)
+            variance[obs] += (delta * delta2 - variance[obs]) / (visit[obs] + 1)
         visit[obs] += 1
         _value = gamma * _value + score[idx]
 
