@@ -1,11 +1,9 @@
 import numpy as np
-import pickle 
 import os
 import sys
 import glob
 import argparse
 import random
-import gc
 from collections import defaultdict
 from util.Data import DataLoader, LossSaver
 from math import ceil
@@ -15,14 +13,11 @@ eps = 0.001
 ARGS
 """
 parser = argparse.ArgumentParser()
-parser.add_argument('--backend', default='pytorch', type=str, help='DL backend')
 parser.add_argument('--batch_size', default=32, type=int, help='Batch size (default:32)')
 parser.add_argument('--cycle', default=-1, type=int, help='Cycle (default:-1)')
 parser.add_argument('--data_paths', default=[], nargs='*', help='Training data paths (default: empty list)')
 parser.add_argument('--early_stopping', default=False, help='Use early stopping', action='store_true')
 parser.add_argument('--early_stopping_patience', default=10, type=int, help='Early stopping patience (default:10)')
-parser.add_argument('--eligibility_trace', default=False, action='store_true', help='Use eligibility trace')
-parser.add_argument('--eligibility_trace_lambda', default=0.9, type=float, help='Lambda in eligibility trace (default:0.9)')
 parser.add_argument('--epochs', default=10, type=int, help='Training epochs (default:10)')
 parser.add_argument('--ewc', default=False, help='Elastic weight consolidation (default:False)', action='store_true')
 parser.add_argument('--ewc_lambda', default=1, type=float, help='Elastic weight consolidation importance parameter(default:1)')
@@ -38,21 +33,15 @@ parser.add_argument('--val_set_size_max', default=-1, type=int, help='Maximum va
 parser.add_argument('--val_total', default=25, type=int, help='Total number of validations (default:25)')
 parser.add_argument('--save_loss', default=False, help='Save loss history', action='store_true')
 parser.add_argument('--save_interval', default=100, type=int, help='Number of iterations between save_loss')
-parser.add_argument('--shuffle', default=False, help='Shuffle dataset', action='store_true')
-parser.add_argument('--target_normalization', default=False, help='Standardizes the targets', action='store_true')
 parser.add_argument('--td', default=False, help='Temporal difference update', action='store_true')
 parser.add_argument('--weighted', default=False, help='Weighted loss', action='store_true')
 parser.add_argument('--weighted_mode', default=0, type=int, help='0: inverse of variance, 1: number of visits')
 args = parser.parse_args()
 
-backend = args.backend
 batch_size = args.batch_size
 cycle = args.cycle
-data_paths = args.data_paths
 early_stopping = args.early_stopping
 early_stopping_patience = args.early_stopping_patience
-eligibility_trace = args.eligibility_trace
-eligibility_trace_lambda = args.eligibility_trace_lambda
 epochs = args.epochs
 ewc = args.ewc
 ewc_lambda = args.ewc_lambda
@@ -68,32 +57,26 @@ val_set_size_max = args.val_set_size_max
 val_total = args.val_total
 save_loss = args.save_loss
 save_interval = args.save_interval
-shuffle = args.shuffle
-target_normalization = args.target_normalization
 td = args.td
 weighted = args.weighted
 weighted_mode = args.weighted_mode
 
 #========================
-""" 
-LOAD DATA 
+"""
+LOAD DATA
 """
 list_of_data = []
-for path in data_paths:
-    list_of_data += glob.glob(path) 
+for path in args.data_paths:
+    list_of_data += glob.glob(path)
 list_of_data.sort(key=os.path.getmtime)
 
 if last_nfiles > 0:
     list_of_data = list_of_data[-last_nfiles:]
 
 if len(list_of_data) == 0:
-    from model.model_pytorch import Model
-    m = Model(training=True, weighted=weighted, ewc=ewc, ewc_lambda=ewc_lambda)
-    m.load()
-    m.save()
-    exit()
+    raise Exception('list_of_data is empty.')
 
-loader = DataLoader(list_of_data)    
+loader = DataLoader(list_of_data)
 
 if td:
     if eligibility_trace:
@@ -158,19 +141,6 @@ if backend == 'pytorch':
             np.expand_dims(weights[idx], -1).astype(np.float32, copy=False))
                 
 
-#========================
-"""
-Shuffle
-"""
-if shuffle:
-    raise Exception('Deprecated')
-    indices = np.random.permutation(len(states))
-
-    states = states[indices]
-    policy = policy[indices]
-    values = values[indices]
-    variance = variance[indices]
-    weights = weights[indices]
 #=========================
 """
 VALIDATION SET
@@ -207,21 +177,6 @@ n_data = len(t_idx)
 
 #=========================
 """
-TARGET NORMALIZATION
-"""
-if target_normalization:
-    raise Exception('Deprecated')
-    v_mean = batch_train[1].mean()
-    v_std = batch_train[1].std()
-    var_mean = batch_train[2].mean()
-    var_std = batch_train[2].std()
-    batch_train[1] = (batch_train[1] - v_mean) / v_std
-    batch_train[2] = (batch_train[2] - var_mean) / var_std
-    batch_val[1] = (batch_val[1] - v_mean) / v_std
-    batch_val[2] = (batch_val[2] - var_mean) / var_std
-
-#=========================
-"""
 MODEL SETUP
 """
 
@@ -233,11 +188,6 @@ if backend == 'pytorch':
     train_step = lambda batch, step: m.train(batch)
     compute_loss = lambda batch: m.compute_loss(batch)
     scheduler_step = lambda **kwargs: m.update_scheduler(**kwargs)
-    if target_normalization:
-        m.v_mean = v_mean
-        m.v_std = v_std
-        m.var_mean = var_mean
-        m.var_std = var_std
 #=========================
 
 iters_per_epoch = n_data//batch_size
