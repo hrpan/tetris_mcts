@@ -79,30 +79,17 @@ However, such handcrafted rewards can bias your agents toward the target you set
 
 ## Prerequisite
 
-* dash_core_components==1.3.1
-* numpy==1.17.2
-* dash_html_components==1.0.1
-* matplotlib==3.1.1
-* dash==1.4.1
-* plotly==4.3.0
-* tables==3.5.2
-* yattag==1.12.2
-* numba==0.45.1
-* torch==1.4.0a0+f669214
-* Pillow==7.0.0
-* caffe2==0.8.1
+See `requirements.txt`
 
 You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris).
 
 ## How to run it?
 
-You can now train your agent with a single command
+You can now train your agent with a single command:
 
-`python play.py --agent_type ValueSim --online --endless`
+`python play.py --agent_type ValueSim --online --ngames 1000 --mcts_sims 300`
 
-(Note that it will run endlessly, and you'll have to terminate it manually.)
-
-(Most of the following are deprecated. Will cleanup when I have the time.) 
+(The following is mostly deprecated. Will cleanup soon.) 
 
 * `play.py` script for agent play or manual play <br> (e.g. `python play.py --selfplay --agent_type ValueSim`)
 * `train.py` script for training the neural network <br> (e.g. `python train.py --data_paths data/self1/data1`)
