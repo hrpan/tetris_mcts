@@ -60,7 +60,7 @@ class Parser:
                    'Lines Cleared:\s*(?P<lines>\d*)'
         train_re = 'Iteration:\s*(?P<iter>\d*)\s*' \
                    'training loss:\s*(?P<t_loss>\d*.\d*)\s*' \
-                   'validation loss:\s*(?P<v_loss>\d*.\d*)±(?P<v_loss_err>\d*.\d*)'
+                   'validation loss:\s*(?P<v_loss>\d*.\d*)±\s*(?P<v_loss_err>\d*.\d*)'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
                       'Validation data size:\s*(?P<vsize>\d*)'
         queue_re = 'Not enough training data \((?P<filled>\d*) <' \
