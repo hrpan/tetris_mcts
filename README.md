@@ -96,10 +96,18 @@ You'll also need the Tetris environment from [here](https://github.com/hrpan/pyT
 
 ## How to run it?
 
+You can now train your agent with a single command
+
+`python play.py --agent_type ValueSim --online --endless`
+
+(Note that it will run endlessly, and you'll have to terminate it manually.)
+
+(Most of the following are deprecated. Will cleanup when I have the time.) 
+
 * `play.py` script for agent play or manual play <br> (e.g. `python play.py --selfplay --agent_type ValueSim`)
 * `train.py` script for training the neural network <br> (e.g. `python train.py --data_paths data/self1/data1`)
 * `tools/plot_score.py` script for plotting the score curve <br> (e.g. `python tools/plot_score.py --data_paths data/self1/data*`)
-* `tools/plot_score.py` script for plotting the entropy curve <br> (e.g. `python tools/plot_entropy.py --data_paths data/self1/data*`)
+* `tools/plot_entropy.py` script for plotting the entropy curve <br> (e.g. `python tools/plot_entropy.py --data_paths data/self1/data*`)
 * `tools/plot_loss.py` script for plotting the loss curve <br> (e.g. `python tools/plot_loss.py data/loss`)
 * `tools/replay.py` GUI for replaying <br> (e.g. `python tools/replay.py --data_paths data/self1/data1`)
 * `web/web_dash.py` A simple plotly based web app for monitoring 
