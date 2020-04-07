@@ -190,7 +190,7 @@ class Model:
             batch = [b[b_idx] for b in batch_training]
             loss = self.train(batch)
 
-            if iters % iters_per_val == 0:
+            if (iters + 1) % iters_per_val == 0:
                 self.training(False)
                 loss_val = self.compute_loss(batch_validation)
                 self.training(True)
@@ -198,7 +198,7 @@ class Model:
                 loss_val_std /= validation_size ** 0.5
 
                 print('Iteration:{:7d}  training loss:{:.3f}  validation loss:{:.3f}±{:.3f}'
-                      .format(iters, loss['loss'], loss_val_mean, loss_val_std), **perr)
+                      .format(iters+1, loss['loss'], loss_val_mean, loss_val_std), **perr)
 
                 if early_stopping:
                     if loss_val_mean - loss_val_min < loss_val_std * early_stopping_threshold:
