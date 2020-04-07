@@ -77,8 +77,7 @@ class Ensemble(nn.Module):
 
 class Model_VV(Model):
     def __init__(self, weighted=False, ewc=False, ewc_lambda=1, loss_type='mle', **kwarg):
-
-        super().__init__(self, **kwarg)
+        super().__init__(**kwarg)
 
         self.weighted = weighted
 
