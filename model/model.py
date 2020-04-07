@@ -197,6 +197,9 @@ class Model:
                 loss_val_mean, loss_val_std = loss_val['loss'], loss_val['loss_std']
                 loss_val_std /= validation_size ** 0.5
 
+                print('Iteration:{:7d}  training loss:{:.3f}  validation loss:{:.3f}±{:.3f}'
+                      .format(iters, loss['loss'], loss_val_mean, loss_val_std), **perr)
+
                 if early_stopping:
                     if loss_val_mean - loss_val_min < loss_val_std * early_stopping_threshold:
                         fails = 0
@@ -205,8 +208,9 @@ class Model:
                             loss_val_min = loss_val_mean
                     else:
                         fails += 1
-                print('Iteration:{:7d}  training loss:{:.3f}  validation loss:{:.3f}±{:.3f}'
-                      .format(iters, loss['loss'], loss_val_mean, loss_val_std), **perr)
+
+                        if fails >= early_stopping_patience:
+                            break
 
         if early_stopping:
             self.load()
