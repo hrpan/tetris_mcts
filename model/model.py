@@ -165,7 +165,7 @@ class Model:
             print('Checkpoint not found, using default model', flush=True)
 
     def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
-                   early_stopping=True, early_stopping_patience=10,
+                   sample_replacement=False, early_stopping=True, early_stopping_patience=10,
                    early_stopping_threshold=1., max_iters=100000):
 
         data_size = len(data[0])
@@ -188,7 +188,7 @@ class Model:
 
         self.training(True)
         for iters in range(max_iters):
-            b_idx = np.random.choice(data_size-validation_size, size=batch_size)
+            b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement)
             batch = [b[b_idx] for b in batch_training]
             loss = self.train(batch)
 
