@@ -202,7 +202,7 @@ class Model:
                 loss_val_std /= validation_size ** 0.5
 
                 print('Iteration:{:7d}  training loss:{:6.3f}  validation loss:{:6.3f}±{:6.3f}'
-                      .format(iters+1, loss['loss'], loss_val_mean, loss_val_std), **perr)
+                      .format(iters+1, loss_avg, loss_val_mean, loss_val_std), **perr)
 
                 if early_stopping:
                     if loss_val_mean - loss_val_min < loss_val_std * early_stopping_threshold:
