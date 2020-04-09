@@ -74,9 +74,7 @@ class Model:
             k_std = k + '_std'
             if k_std in _tmp:
                 loss_std = np.array(_tmp[k_std])
-                loss_sq = (bsize - 1) * loss_std ** 2 / bsize + loss ** 2
-                loss_sq_combined = np.sum(loss_sq * bsize) / d_size
-                loss_std_combined = ((loss_sq_combined - loss_combined ** 2) * d_size / (d_size - 1)) ** 0.5
+                loss_std_combined = np.sqrt(np.sum((bsize - 1) * loss_std ** 2 + bsize * (loss - loss_combined) ** 2) / (d_size - 1))
                 result[k_std] = loss_std_combined
 
         return result
