@@ -59,8 +59,8 @@ class Parser:
                    'Score:\s*(?P<score>\d*)\s*' \
                    'Lines Cleared:\s*(?P<lines>\d*)'
         train_re = 'Iteration:\s*(?P<iter>\d*)\s*' \
-                   'training loss:\s*(?P<t_loss>\d*.\d*)\s*' \
-                   'validation loss:\s*(?P<v_loss>\d*.\d*)±\s*(?P<v_loss_err>\d*.\d*)'
+                   'training loss:\s*(?P<t_loss>\d*\.\d*)\s*' \
+                   'validation loss:\s*(?P<v_loss>\d*\.\d*)±\s*(?P<v_loss_err>\d*\.\d*|nan)'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
                       'Validation data size:\s*(?P<vsize>\d*)'
         queue_re = 'Not enough training data \((?P<filled>\d*) <' \
@@ -102,7 +102,10 @@ class Parser:
                     d = match_train_re.groupdict()
                     training_loss.append(float(d['t_loss']))
                     validation_loss.append(float(d['v_loss']))
-                    validation_loss_err.append(float(d['v_loss_err']))
+                    if d['v_loss_err'] == 'nan':
+                        validation_loss_err.append(0)
+                    else:
+                        validation_loss_err.append(float(d['v_loss_err']))
                 elif match_datasize_re:
                     d = match_datasize_re.groupdict()
                     tsize = int(d['tsize'])
@@ -184,14 +187,6 @@ class ModelParser:
                 model_state = state['model_state_dict']
                 self.parse_state(model_state)
                 return True
-        elif not self.data:
-            if self.distributional:
-                import model.model_distributional as M
-            else:
-                import model.model_pytorch as M
-            m = M.Model(use_cuda=False)
-            self.parse(m)
-            return True
         return False
 
     def parse(self, model):
