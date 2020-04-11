@@ -74,6 +74,7 @@ class Model:
             k_std = k + '_std'
             if k_std in _tmp:
                 loss_std = np.array(_tmp[k_std])
+                np.nan_to_num(loss_std, copy=False)
                 loss_std_combined = np.sqrt(np.sum((bsize - 1) * loss_std ** 2 + bsize * (loss - loss_combined) ** 2) / (d_size - 1))
                 result[k_std] = loss_std_combined
 
@@ -89,13 +90,19 @@ class Model:
 
         return norm ** (1/p)
 
-    def train(self, batch, grad_clip=0):
+    def train(self, batch, grad_clip=0, g_norm_warn=100.):
 
         self.optimizer.zero_grad()
 
         loss = self._loss(batch)
 
         loss['loss'].backward()
+
+        g_norm = self.compute_gradient_norm()
+        if g_norm > g_norm_warn:
+            print('Large gradient ({}) detected'.format(g_norm), **perr)
+            _tmp = self.inference(batch[0])
+            np.savez('data/dump_grad', *batch, *_tmp)
 
         if grad_clip > 0:
             U.clip_grad_norm_(self.model.parameters(), grad_clip)
