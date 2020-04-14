@@ -147,18 +147,19 @@ def backup_trace_obs(trace, visit, value, variance, n_to_o, score, _value, _vari
 
 
 @jit(**jit_args)
-def backup_trace_obs_exp_moving(trace, visit, value, variance, n_to_o, score, _value, _variance, alpha=0.1):
-    for idx in trace:
-        v = _value - score[idx]
+def backup_trace_obs_exp_moving(trace, visit, value, variance, n_to_o, score, _value, _variance, alpha=0.1, gamma=0.999):
+    for idx in trace[::-1]:
+        _value -= score[idx]
         obs = n_to_o[idx]
         if visit[obs] == 0:
-            value[obs] = v
+            value[obs] = _value
             variance[obs] = _variance
         else:
-            _v = v - value[obs]
+            _v = _value - value[obs]
             value[obs] += alpha * _v
             variance[obs] = (1 - alpha) * (variance[obs] + alpha * _v * _v)
         visit[obs] += 1
+        _value = gamma * _value + score[idx]
 
 
 @jit(**jit_args)
