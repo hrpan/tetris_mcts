@@ -50,7 +50,7 @@ class Model:
 
         self.training(training)
 
-    def compute_loss(self, batch, chunksize=512):
+    def compute_loss(self, batch, chunksize=1024):
 
         _tmp = defaultdict(list)
         d_size = len(batch[0])
@@ -171,7 +171,7 @@ class Model:
 
     def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
                    sample_replacement=False, early_stopping=True, early_stopping_patience=10,
-                   early_stopping_threshold=1., max_iters=100000):
+                   early_stopping_threshold=1., shuffle=False, max_iters=100000):
 
         data_size = len(data[0])
         validation_size = int(data_size * validation_fraction)
@@ -179,6 +179,10 @@ class Model:
         weights = data[-1] / data[-1].mean()
 
         data[-1] = weights
+
+        if shuffle:
+            idx = np.random.permutation(data_size)
+            data = [d[idx] for d in data]
 
         batch_training = [d[:-validation_size] for d in data]
         batch_validation = [d[-validation_size:] for d in data]
