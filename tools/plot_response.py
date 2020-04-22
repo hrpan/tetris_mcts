@@ -132,6 +132,13 @@ def plot_data(truth, pred, weight, bins=100, p=1, suffix=''):
     plt.cla()
     plt.clf()
 
+    plt.xlabel('variance (predict)')
+    plt.ylabel('value (predict)')
+    plt.hist2d(variance_p, value_p, bins=bins, norm=mpl.colors.LogNorm())
+    plt.savefig('./tmp/vv{}.png'.format(suffix))
+    plt.cla()
+    plt.clf()
+
 
 
 plot_data(data_train, pred_train, weight[:-v_size], suffix='_train')
