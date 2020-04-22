@@ -176,3 +176,25 @@ def backup_trace_value_policy_obs(trace, child, visit, value, policy, n_to_o, sc
             if _v > vmax:
                 vmax, amax = _v, i
         policy[obs][amax] += 1
+
+
+@jit(**jit_args)
+def backup_trace_mixture_obs(trace, visit, value, variance, n_to_o, score, _value, _variance, gamma=0.999):
+    for idx in trace[::-1]:
+        _value -= score[idx]
+        obs = n_to_o[idx]
+        visit[obs] += 1
+
+        v_diff = _value - value[obs]
+        v_sq_diff = _value ** 2 - value[obs] ** 2
+
+        v_tmp = value[obs]
+
+        value[obs] += v_diff / visit[obs]
+
+        var_diff = _variance - variance[obs]
+
+        variance[obs] += (var_diff + v_sq_diff) / visit[obs] - (v_diff / visit[obs]) * (2 * v_tmp + v_diff / visit[obs])
+
+        _value = gamma * _value + score[idx]
+        _variance *= gamma
