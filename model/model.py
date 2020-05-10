@@ -57,7 +57,7 @@ class Model:
         with torch.no_grad():
             for c in range(0, d_size, chunksize):
                 b = [d[c:c+chunksize] for d in batch]
-                loss = self._loss(b)
+                loss = self._loss(b, weighted=True)
                 _tmp['bsize'].append(len(b[0]))
                 for k, v in loss.items():
                     _tmp[k].append(v.item())
@@ -90,11 +90,11 @@ class Model:
 
         return norm ** (1/p)
 
-    def train(self, batch, grad_clip=0, g_norm_warn=100.):
+    def train(self, batch, grad_clip=1., g_norm_warn=1e2, weighted=False):
 
         self.optimizer.zero_grad()
 
-        loss = self._loss(batch)
+        loss = self._loss(batch, weighted=weighted)
 
         loss['loss'].backward()
 
@@ -110,7 +110,7 @@ class Model:
         self.optimizer.step()
 
         result = {k: v.item() for k, v in loss.items()}
-
+        result['grad_norm'] = g_norm
         return result
 
     def training(self, mode=True):
@@ -170,14 +170,13 @@ class Model:
             print('Checkpoint not found, using default model', flush=True)
 
     def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
-                   sample_replacement=False, early_stopping=True, early_stopping_patience=10,
+                   sample_replacement=True, early_stopping=True, early_stopping_patience=10,
                    early_stopping_threshold=1., shuffle=False, max_iters=100000):
 
         data_size = len(data[0])
         validation_size = int(data_size * validation_fraction)
 
         weights = data[-1] / data[-1].mean()
-
         data[-1] = weights
 
         if shuffle:
@@ -187,22 +186,23 @@ class Model:
         batch_training = [d[:-validation_size] for d in data]
         batch_validation = [d[-validation_size:] for d in data]
 
+        p = np.squeeze(batch_training[-1] / batch_training[-1].sum())
         print('Training data size: {}    Validation data size: {}'.format(data_size-validation_size, validation_size), **perr)
 
         if early_stopping:
             fails = 0
             loss_val_min = float('inf')
 
-        loss_avg, alpha = 0, 0.01
-
+        loss_avg = g_norm_avg = 0
+        alpha = 0.01
         self.training(True)
         for iters in range(max_iters):
-            b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement)
+            b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement, p=p)
             batch = [b[b_idx] for b in batch_training]
-            loss = self.train(batch)
+            loss = self.train(batch, weighted=False)
 
             loss_avg += alpha * (loss['loss'] - loss_avg)
-
+            g_norm_avg += alpha * (loss['grad_norm'] - g_norm_avg)
             if (iters + 1) % iters_per_val == 0:
                 self.training(False)
                 loss_val = self.compute_loss(batch_validation)
@@ -210,13 +210,14 @@ class Model:
                 loss_val_mean, loss_val_std = loss_val['loss'], loss_val['loss_std']
                 loss_val_std /= validation_size ** 0.5
 
-                print('Iteration:{:7d}  training loss:{:6.3f}  validation loss:{:6.3f}±{:6.3f}'
-                      .format(iters+1, loss_avg, loss_val_mean, loss_val_std), **perr)
+                bias_coeff = 1 / (1 - (1 - alpha) ** (iters + 1))
 
+                suffix = ''
                 if early_stopping:
                     if loss_val_mean - loss_val_min < loss_val_std * early_stopping_threshold:
                         fails = 0
                         if loss_val_mean < loss_val_min:
+                            suffix = '*'
                             self.save(verbose=False)
                             loss_val_min = loss_val_mean
                     else:
@@ -224,6 +225,9 @@ class Model:
 
                         if fails >= early_stopping_patience:
                             break
+
+                print('Iteration:{:7d}  training loss:{:6.3f}  validation loss:{:6.3f}±{:6.3f}  gradient norm:{:6.3f}    {}'
+                      .format(iters+1, loss_avg * bias_coeff, loss_val_mean, loss_val_std, g_norm_avg * bias_coeff, suffix), **perr)
 
         if early_stopping:
             self.load()
