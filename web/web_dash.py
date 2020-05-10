@@ -104,16 +104,19 @@ fig_loss = go.Figure(
         go.Scatter(x=[], y=[], name='Training Loss', mode='lines'),
         go.Scatter(x=[], y=[],
             error_y=dict(type='data', array=[], visible=True),
-            name='Validation Loss', mode='lines')
+            name='Validation Loss', mode='lines'),
+        go.Scatter(x=[], y=[], name='Gradient Norm', mode='lines', yaxis='y2')
     ],
     layout=go.Layout(
-        title={'text': 'Training / Validation Loss',
+        title={'text': 'Training / Validation Loss & Gradient Norm',
                'font': {'color': colors['text']}},
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         font={'color': colors['text']},
         xaxis={'title': 'Iteration', 'rangemode': 'tozero'},
         yaxis={'rangemode': 'tozero'},
+        yaxis2={'title': 'Norm', 'side': 'right', 'overlaying': 'y',
+                'showgrid': False, 'rangemode': 'tozero'},
         uirevision=True
     )
 )
@@ -305,11 +308,14 @@ def log_parser_update():
             loss_train = log_parser.data['training_loss']
             loss_valid = log_parser.data['validation_loss']
             loss_valid_err = log_parser.data['validation_loss_err']
+            g_norm = log_parser.data['g_norm']
             fig_loss.data[0]['x'] = list(range(len(loss_train)))
             fig_loss.data[0]['y'] = loss_train
             fig_loss.data[1]['x'] = list(range(len(loss_valid)))
             fig_loss.data[1]['y'] = loss_valid
             fig_loss.data[1]['error_y']['array'] = loss_valid_err
+            fig_loss.data[2]['x'] = list(range(len(g_norm)))
+            fig_loss.data[2]['y'] = g_norm
 
             data_acc = log_parser.data['data_accumulated']
             fig_data.data[0]['x'] = list(range(len(data_acc)))
