@@ -5,6 +5,7 @@ import os
 import shutil
 import filecmp
 import numpy as np
+from collections import defaultdict
 from shutil import copyfile
 
 sys.path.append('../')
@@ -60,20 +61,14 @@ class Parser:
                    'Lines Cleared:\s*(?P<lines>\d*)'
         train_re = 'Iteration:\s*(?P<iter>\d*)\s*' \
                    'training loss:\s*(?P<t_loss>\d*\.\d*)\s*' \
-                   'validation loss:\s*(?P<v_loss>\d*\.\d*)±\s*(?P<v_loss_err>\d*\.\d*|nan)'
+                   'validation loss:\s*(?P<v_loss>\d*\.\d*)±\s*(?P<v_loss_err>\d*\.\d*|nan)\s*' \
+                   'gradient norm:\s*(?P<g_norm>\d*\.\d*)'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
                       'Validation data size:\s*(?P<vsize>\d*)'
         queue_re = 'Not enough training data \((?P<filled>\d*) <' \
                    ' (?P<size>\d*)\).*'
 
-        line_cleared = []
-        line_cleared_per_train = []
-        score = []
-        score_per_train = []
-        data_accumulated = []
-        training_loss = []
-        validation_loss = []
-        validation_loss_err = []
+        self.data = defaultdict(list)
         size = 0
         filled = 0
         rm_since_last_game = 0
@@ -92,20 +87,22 @@ class Parser:
                     d = match_score_re.groupdict()
                     lc = int(d['lines'])
                     sc = int(d['score'])
-                    line_cleared.append(lc)
-                    score.append(sc)
+                    self.data['line_cleared'].append(lc)
+                    self.data['score'].append(sc)
+                    self.data['data_accumulated'].append(data_accum)
                     lc_avg_tmp.append(lc)
                     sc_avg_tmp.append(sc)
-                    data_accumulated.append(data_accum)
                     rm_since_last_game = 0
                 elif match_train_re:
                     d = match_train_re.groupdict()
-                    training_loss.append(float(d['t_loss']))
-                    validation_loss.append(float(d['v_loss']))
+                    self.data['training_loss'].append(float(d['t_loss']))
+                    self.data['validation_loss'].append(float(d['v_loss']))
                     if d['v_loss_err'] == 'nan':
-                        validation_loss_err.append(0)
+                        self.data['validation_loss_err'].append(0)
                     else:
-                        validation_loss_err.append(float(d['v_loss_err']))
+                        self.data['validation_loss_err'].append(float(d['v_loss_err']))
+                    self.data['g_norm'].append(float(d['g_norm']))
+                    print(d['g_norm'])
                 elif match_datasize_re:
                     d = match_datasize_re.groupdict()
                     tsize = int(d['tsize'])
@@ -120,27 +117,37 @@ class Parser:
                 elif 'proceed to training' in line:
                     training = True
                     if lc_avg_tmp:
-                        line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
+                        mean = np.average(lc_avg_tmp)
+                        std = np.std(lc_avg_tmp) / np.sqrt(len(lc_avg_tmp))
+                        self.data['line_cleared_per_train'].append((mean, std))
                         lc_avg_tmp.clear()
                     else:
-                        if line_cleared_per_train:
-                            line_cleared_per_train.append(line_cleared_per_train[-1])
+                        if self.data['line_cleared_per_train']:
+                            self.data['line_cleared_per_train'].append(
+                                    self.data['line_cleared_per_train'][-1])
                         else:
-                            line_cleared_per_train.append(0)
+                            self.data['line_cleared_per_train'].append((0, 0))
                     if sc_avg_tmp:
-                        score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
+                        mean = np.average(sc_avg_tmp)
+                        std = np.std(sc_avg_tmp) / np.sqrt(len(sc_avg_tmp))
+                        self.data['score_per_train'].append((mean, std))
                         sc_avg_tmp.clear()
                     else:
-                        if score_per_train:
-                            score_per_train.append(score_per_train[-1])
+                        if self.data['score_per_train']:
+                            self.data['score_per_train'].append(
+                                    self.data['score_per_train'][-1])
                         else:
-                            score_per_train.append(0)
+                            self.data['score_per_train'].append((0, 0))
                 elif 'Training complete' in line:
                     training = False
             if lc_avg_tmp:
-                line_cleared_per_train.append((np.average(lc_avg_tmp), np.std(lc_avg_tmp)/np.sqrt(len(lc_avg_tmp))))
+                mean = np.average(lc_avg_tmp)
+                std = np.std(lc_avg_tmp) / np.sqrt(len(lc_avg_tmp))
+                self.data['line_cleared_per_train'].append((mean, std))
             if sc_avg_tmp:
-                score_per_train.append((np.average(sc_avg_tmp), np.std(sc_avg_tmp)/np.sqrt(len(sc_avg_tmp))))
+                mean = np.average(sc_avg_tmp)
+                std = np.std(sc_avg_tmp) / np.sqrt(len(sc_avg_tmp))
+                self.data['score_per_train'].append((mean, std))
 
             if not training:
                 flocal = './model_checkpoint'
@@ -152,19 +159,9 @@ class Parser:
                 if ex_target and ((ex_local and not filecmp.cmp(flocal, ftarget)) or not ex_local):
                     copyfile(ftarget, flocal)
 
-        self.data = dict(
-                line_cleared=line_cleared,
-                line_cleared_per_train=line_cleared_per_train,
-                score=score,
-                score_per_train=score_per_train,
-                data_accumulated=data_accumulated,
-                training_loss=training_loss,
-                validation_loss=validation_loss,
-                validation_loss_err=validation_loss_err,
-                filled=filled,
-                size=size,
-                rm_since_last_game=rm_since_last_game
-                )
+        self.data['filled'] = filled
+        self.data['size'] = size
+        self.data['rm_since_last_game'] = rm_since_last_game
 
 
 class ModelParser:
