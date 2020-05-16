@@ -1,7 +1,7 @@
 import numpy as np
 from agents.agent import TreeAgent
-from agents.core import select_trace, backup_trace, get_all_childs
-from agents.core_projection import select_trace_obs, backup_trace_obs
+from agents.core import select_trace, backup_trace
+from agents.cppmodule.core import get_all_childs, select_trace_obs, backup_trace_obs
 from model.model_vv import Model_VV as Model
 from sys import stderr
 
@@ -11,7 +11,7 @@ perr = dict(file=stderr, flush=True)
 
 class ValueSim(TreeAgent):
 
-    def __init__(self, online=True, memory_size=250000, min_visits_to_store=10, gamma=0.99, memory_growth_rate=2500, **kwargs):
+    def __init__(self, online=True, memory_size=500000, min_visits_to_store=10, gamma=0.999, episodes_per_train=10, memory_growth_rate=10000, **kwargs):
 
         super().__init__(max_nodes=100000, **kwargs)
 
@@ -32,8 +32,9 @@ class ValueSim(TreeAgent):
             self.memory_index = 0
 
             self.n_trains = 0
-
             self.memory_growth_rate = memory_growth_rate
+            self.episodes_per_train = episodes_per_train
+            self.last_episode = 0
 
         self.min_visits_to_store = min_visits_to_store
 
@@ -43,11 +44,9 @@ class ValueSim(TreeAgent):
         self.model.load()
         self.model.training(False)
 
-        self.inference = lambda state: self.model.inference(state[None, None, :, :])
-
     def evaluate_state(self, state):
 
-        v, var = self.inference(state)
+        v, var = self.model.inference(state[None, None, :, :])
 
         return v[0][0], var[0][0]
 
@@ -61,9 +60,10 @@ class ValueSim(TreeAgent):
             value = self.obs_arrays['value']
             variance = self.obs_arrays['variance']
             n_to_o = self.node_to_obs
-            s_args = [root_index, child, visit, value, variance, score, n_to_o]
+            s_args = [root_index, child, visit, value, variance, score, n_to_o, 1]
             selection = select_trace_obs
             b_args = [None, visit, value, variance, n_to_o, score, None, None, self.gamma]
+            #backup = backup_trace_mixture_obs
             backup = backup_trace_obs
         else:
             visit = self.arrays['visit']
@@ -93,6 +93,11 @@ class ValueSim(TreeAgent):
             b_args[-3] = _value
             b_args[-2] = _variance
             backup(*b_args)
+            #print('{:3d} {:3d} {} {:.3f} {:.3f} {:.3f} {:.3f}'.format(
+            #    i, visit[n_to_o[self.root]], self.root,value[n_to_o[self.root]],
+            #    variance[n_to_o[self.root]], _value - score[self.root], _variance))
+        #print(self.compute_stats().astype(int))
+        #input()
 
     def remove_nodes(self):
 
@@ -154,14 +159,26 @@ class ValueSim(TreeAgent):
 
         self.memory_index = m_idx
 
-    def train_nodes(self, growth_rate=2500, dump_data=True):
+    def train_nodes(self, dump_data=True):
 
         print('Training...', **perr)
 
         states, values, variance, weights = self.memory
 
         d_size = self.memory_index
-        m_size = min((self.n_trains + 1) * self.memory_growth_rate, self.memory_size)
+
+        #if self.episode - self.last_episode >= self.episodes_per_train:
+        #    print('Enough episodes ({} >= {}), proceed to training.'
+        #          .format(self.episode - self.last_episode, self.episodes_per_train), **perr)
+        #    self.last_episode = self.episode
+        #elif d_size == self.memory_size:
+        #    print('Memory limit reached, proceed to training.')
+        #    self.last_episode = self.episode
+        #else:
+        #    print('Not enough episodes ({} < {}), collecting more episodes.'
+        #          .format(self.episode - self.last_episode, self.episodes_per_train), **perr)
+        #    return None
+        m_size = min(self.n_trains * self.memory_growth_rate, self.memory_size)
         if d_size >= m_size:
             print('Enough training data ({} >= {}), proceed to training.'.format(d_size, m_size), **perr)
         else:
@@ -172,8 +189,7 @@ class ValueSim(TreeAgent):
             np.savez('./data/dump', states=states[:d_size], values=values[:d_size], variance=variance[:d_size], weights=weights[:d_size])
 
         self.n_trains += 1
-
-        self.model.train_data([d[:d_size] for d in self.memory])
+        self.model.train_data([d[:d_size] for d in self.memory], iters_per_val=100, batch_size=512, max_iters=50000)
         self.model.training(False)
 
         self.memory_index = 0
