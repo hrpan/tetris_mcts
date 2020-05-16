@@ -194,7 +194,7 @@ def backup_trace_mixture_obs(trace, visit, value, variance, n_to_o, score, _valu
 
         var_diff = _variance - variance[obs]
 
-        variance[obs] += (var_diff + v_sq_diff) / visit[obs] - (v_diff / visit[obs]) * (2 * v_tmp + v_diff / visit[obs])
+        variance[obs] += (var_diff + v_sq_diff) / visit[obs] - (v_diff / visit[obs]) * (v_tmp + value[obs])
 
         _value = gamma * _value + score[idx]
         _variance *= gamma
