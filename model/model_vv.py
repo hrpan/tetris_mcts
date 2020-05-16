@@ -3,62 +3,72 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import random
-import torch_optimizer as toptim
 from collections import defaultdict, OrderedDict
 from model.model import convOutShape, Model
 from model.yogi import Yogi
 
+variance_bound = 1.
+
 
 class Net(nn.Module):
 
-    def __init__(self, input_shape=(22, 10), eps=1.):
-        super(Net, self).__init__()
+    def __init__(self, input_shape=(22, 10), eps=variance_bound):
+        super().__init__()
 
         kernel_size = 3
         stride = 1
         filters = 32
-        bias = False
+        groups = 8
+        bias = True
+        #bias = False
 
-        self.activation = nn.ReLU(inplace=True)
+        self.activation = nn.LeakyReLU(inplace=True)
+        #self.activation = nn.ReLU(inplace=True)
 
         _shape = convOutShape(input_shape, kernel_size, stride)
         _shape = convOutShape(_shape, kernel_size, stride)
         flat_in = _shape[0] * _shape[1] * filters
 
+        n_fc = 128
         self.head = nn.Sequential(OrderedDict([
                 ('conv1', nn.Conv2d(1, filters, kernel_size, stride, bias=bias)),
-                ('norm1', nn.BatchNorm2d(filters)),
                 ('act1', self.activation),
                 ('conv2', nn.Conv2d(filters, filters, kernel_size, stride, bias=bias)),
-                ('norm2', nn.BatchNorm2d(filters)),
                 ('act2', self.activation),
                 ('flatten', nn.Flatten()),
-                ('fc1', nn.Linear(flat_in, 128)),
-                ('act4', self.activation),
-                ('fc_out', nn.Linear(128, 2)),
-                #('act_out', nn.Softplus()),
+                ('fc1', nn.Linear(flat_in, n_fc)),
+                ('fc_act1', self.activation),
+                ('fc_out', nn.Linear(n_fc, 2)),
+                #('act_out', nn.Softplus())
             ]))
 
-        self.head.fc_out.bias.data[0] = 1e2
-        self.head.fc_out.bias.data[1] = 1e2
+        #self.head.fc_out.bias.data[0].fill_(1e2)
+        #self.head.fc_out.bias.data[1].fill_(1e2)
+
+        self.value_bound = nn.Parameter(torch.tensor([1e3]), requires_grad=False)
+        self.variance_bound = nn.Parameter(torch.tensor([1e5]), requires_grad=False)
 
         self.eps = nn.Parameter(torch.tensor([eps]), requires_grad=False)
 
     def forward(self, x):
 
-        x = self.head(x)
-
+        x = self.head(x).sigmoid()
+        #x = self.head(x)
         value, variance = x.split(1, dim=1)
-
-        return value, F.softplus(variance).add(self.eps)
+        value = value.mul(self.value_bound)
+        variance = variance.mul(self.variance_bound).add(self.eps)
+        #variance = variance.exp().add(self.eps)
+        #variance = variance.add(self.eps)
+        #variance = variance.pow(2).add(self.eps)
+        #variance = F.softplus(variance).add(self.eps)
+        return value, variance
 
 
 class Ensemble(nn.Module):
 
     def __init__(self, n_models=5):
 
-        super(Ensemble, self).__init__()
+        super().__init__()
 
         self.n_models = n_models
 
@@ -76,8 +86,37 @@ class Ensemble(nn.Module):
             return value, var
 
 
+class WeakGaussianLL(nn.Module):
+
+    def __init__(self, sigma=3.):
+        super().__init__()
+
+        self.sigma = sigma
+
+    def forward(self, var_pred, mean_pred, var, mean):
+        diff = (mean - mean_pred).abs()
+
+        threshold = self.sigma * var_pred.sqrt()
+
+        vloss = torch.where(diff < threshold, diff ** 2, 2 * threshold * diff - threshold ** 2)
+
+        logl = var_pred.log() + (var + vloss) / var_pred - var.log() - 1
+
+        return logl
+
+
+class GaussianLL(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, var_pred, mean_pred, var, mean):
+        logl = var_pred.log().add_((mean - mean_pred).pow_(2).add_(var).div_(var_pred)).add_(-1, var.log()).add(-1)
+        return logl
+
+
 class Model_VV(Model):
-    def __init__(self, weighted=False, ewc=False, ewc_lambda=1, loss_type='mle', **kwarg):
+    def __init__(self, weighted=False, ewc=False, ewc_lambda=1, loss_type='kldiv', **kwarg):
         super().__init__(**kwarg)
 
         self.weighted = weighted
@@ -93,7 +132,10 @@ class Model_VV(Model):
         elif loss_type == 'mse':
             self.l_func = lambda x, y: (x - y) ** 2
         elif loss_type == 'kldiv' or loss_type == 'mle':
-            self.l_func = lambda v_p, mu_p, v, mu: torch.log(v_p) + (v + (mu - mu_p) ** 2) / v_p - torch.log(v) - 1
+            self.l_func = GaussianLL()
+            #self.l_func = WeakGaussianLL()
+        elif loss_type == 'mle_approx':
+            self.l_func = lambda v_p, mu_p, v, mu: (1 - v_p / v) ** 2 + 2 * (mu - mu_p) ** 2 / v
 
     def _init_model(self):
 
@@ -102,13 +144,13 @@ class Model_VV(Model):
             self.model = self.model.cuda()
         self.model = torch.jit.script(self.model)
 
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-2, weight_decay=1e-4)
-        self.optimizer = Yogi(self.model.parameters(), lr=1e-4, eps=1e-3)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.95, nesterov=True)
+        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-2, eps=1e-3)
+        self.optimizer = Yogi(self.model.parameters(), lr=1e-3, eps=1e-2)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95, nesterov=True)
 
         self.scheduler = None
 
-    def _loss(self, batch, variance_clip=1.0):
+    def _loss(self, batch, variance_clip=variance_bound, weighted=False):
 
         batch_tensor = [torch.as_tensor(b, dtype=torch.float, device=self.device) for b in batch]
 
@@ -117,18 +159,21 @@ class Model_VV(Model):
         variance.clamp_(min=variance_clip)
 
         _v, _var = self.model(state)
-        if self.loss_type == 'mle':
-            loss = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
-            return defaultdict(float, loss=loss[1], loss_std=loss[0])
-        elif self.loss_type == 'kldiv':
-            loss = torch.std_mean(self.l_func(_var, _v, variance, value))
-            return defaultdict(float, loss=loss[1], loss_std=loss[0])
+        if self.loss_type == 'mle' or self.loss_type == 'kldiv':
+            if weighted:
+                std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
+            else:
+                std, mean = torch.std_mean(self.l_func(_var, _v, variance, value))
+            return defaultdict(float, loss=mean, loss_std=std)
+        elif self.loss_type == 'mle_approx':
+            std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
+            return defaultdict(float, loss=mean, loss_std=std)
         else:
             loss_v = self.l_func(_v, value)
 
             loss_var = self.l_func(_var, variance)
 
-            if self.weighted:
+            if weighted:
                 loss_v = weight * loss_v
                 loss_var = weight * loss_var
 
@@ -186,6 +231,12 @@ class Model_VV(Model):
         result[0] = np.random.normal(result[0], np.sqrt(result[1]))
 
         return result
+
+    def train_data(self, data, **kwargs):
+        self.model.value_bound.fill_(max(self.model.value_bound.item(), data[1].max()))
+        self.model.variance_bound.fill_(max(self.model.variance_bound.item(), data[2].max()))
+
+        super().train_data(data, **kwargs)
 
 #    def save_onnx(self, verbose=False):
 #
