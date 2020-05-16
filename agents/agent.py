@@ -1,6 +1,7 @@
 import numpy as np
+import agents.helper
+from agents.cppmodule.core import get_all_childs
 from sys import stderr
-from agents.core import get_all_childs
 from collections import deque
 
 perr = dict(file=stderr, flush=True)
