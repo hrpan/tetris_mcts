@@ -130,6 +130,27 @@ void get_unique_child_obs(
 
 }
 
+py::tuple get_unique_child_obs_(
+        size_t index,
+        const py::array_t<int, 1> &child, 
+        const py::array_t<float, 1> &score, 
+        const py::array_t<int, 1> &n_to_o){
+
+    std::vector<int> c_nodes, c_obs;
+    c_nodes.reserve(n_actions);
+    c_obs.reserve(n_actions);
+
+    get_unique_child_obs(index, child, score, n_to_o, c_nodes, c_obs);
+
+    /*
+    py::list py_c_nodes = py::cast(c_nodes);
+    py::list py_c_obs = py::cast(c_obs);
+
+    return py::make_tuple(py_c_nodes, py_c_obs);
+    */
+    return py::make_tuple(c_nodes, c_obs);
+}
+
 py::array_t<int, 1> select_trace_obs(
         size_t index, 
         py::array_t<int, 1> &child,
@@ -233,6 +254,7 @@ void backup_trace_obs(
 
 PYBIND11_MODULE(core, m){
     m.def("get_all_childs", &get_all_childs);
+    m.def("get_unique_child_obs", &get_unique_child_obs_);
     m.def("select_trace_obs", &select_trace_obs);
     m.def("backup_trace_obs", &backup_trace_obs);
 }
