@@ -1,4 +1,5 @@
 from model.model_vv import Model_VV as Model
+from model.model_vv import variance_bound
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -15,7 +16,7 @@ value = np.squeeze(data['values'])
 variance = np.squeeze(data['variance'])
 weight = np.squeeze(data['weights'])
 
-chunksize = 1024
+chunksize = 256
 
 results = []
 for i in range(0, len(state), chunksize):
@@ -39,7 +40,8 @@ def plot_data(truth, pred, weight, bins=100, p=1, suffix=''):
     value_t, variance_t = truth
     value_p, variance_p = pred
 
-    loss = weight * (np.log(variance_p / variance_t) + (variance_t + (value_t - value_p) ** 2) / variance_p - 1)
+    loss = (np.log(variance_p.clip(min=variance_bound) / variance_t.clip(min=variance_bound)) + 
+           (variance_t.clip(min=variance_bound) + (value_t - value_p) ** 2) / variance_p.clip(min=variance_bound) - 1)
 
     value_range = (min(np.percentile(value_t, p), np.percentile(value_p, p)), 
                   max(np.percentile(value_t, 100-p), np.percentile(value_p, 100-p)))
