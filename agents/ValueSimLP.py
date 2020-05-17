@@ -3,6 +3,7 @@ from agents.ValueSim import ValueSim
 from agents.cppmodule.core import get_all_childs, select_trace_obs, backup_trace_obs
 from agents.cppmodule.core import get_unique_child_obs
 
+
 class ValueSimLP(ValueSim):
 
     def __init__(self, **kwargs):
@@ -49,33 +50,30 @@ class ValueSimLP(ValueSim):
             _value, _variance = leaf_game.score, 0
             if not leaf_game.end:
 
-                #v, _variance = self.evaluate_state(leaf_game.getState())
-
-                #_value += v
-
                 self.expand(leaf_game)
 
-                _c, _o = get_unique_child_obs(leaf_index, child, score, n_to_o) 
+                _c, _o = get_unique_child_obs(leaf_index, child, score, n_to_o)
 
                 states = self.obs_arrays['state'][_o]
 
                 v, var = self.evaluate_states(states)
 
-                trace = np.append(trace, 0).astype(np.int32)
+                _variance = np.mean(var)
 
-                b_args[0] = trace
-
+                vmean = 0
                 for __c, __o, __v, __var in zip(_c, _o, v, var):
                     if visit[__o] > 0:
+                        vmean += value[__o] + (score[__c] - _value)
                         continue
-                    trace[-1] = __c
-                    b_args[-3] = _value + __v
-                    b_args[-2] = __var
-                    backup(*b_args)
-            else:
-                b_args[0] = trace
-                b_args[-3] = _value
-                b_args[-2] = _variance
-                backup(*b_args)
-            #print('after', i, value[n_to_o[self.root]], variance[n_to_o[self.root]])
+                    visit[__o] = 1
+                    value[__o] = __v
+                    variance[__o] = __var
+                    vmean += __v + (score[__c] - _value)
+                _value += vmean / len(v)
+
+            b_args[0] = trace
+            b_args[-3] = _value
+            b_args[-2] = _variance
+            backup(*b_args)
+            #print(i, visit[n_to_o[self.root]], value[n_to_o[self.root]], variance[n_to_o[self.root]])
             #input()
