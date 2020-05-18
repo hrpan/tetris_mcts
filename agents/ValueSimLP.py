@@ -20,6 +20,7 @@ class ValueSimLP(ValueSim):
 
         child = self.arrays['child']
         score = self.arrays['score']
+        games = self.game_arr
 
         if self.projection:
             visit = self.obs_arrays['visit']
@@ -45,7 +46,7 @@ class ValueSimLP(ValueSim):
 
             leaf_index = trace[-1]
 
-            leaf_game = self.game_arr[leaf_index]
+            leaf_game = games[leaf_index]
 
             _value, _variance = leaf_game.score, 0
             if not leaf_game.end:
@@ -63,13 +64,18 @@ class ValueSimLP(ValueSim):
                 vmean = 0
                 for __c, __o, __v, __var in zip(_c, _o, v, var):
                     if visit[__o] > 0:
-                        vmean += value[__o] + (score[__c] - _value)
+                        vmean += value[__o] + score[__c]
                         continue
+                    elif games[__c].end:
+                        value[__o] = 0
+                        variance[__o] = 0
+                        vmean += score[__c]
+                    else:
+                        value[__o] = __v
+                        variance[__o] = __var
+                        vmean += __v + score[__c]
                     visit[__o] = 1
-                    value[__o] = __v
-                    variance[__o] = __var
-                    vmean += __v + (score[__c] - _value)
-                _value += vmean / len(v)
+                _value = vmean / len(v)
 
             b_args[0] = trace
             b_args[-3] = _value
