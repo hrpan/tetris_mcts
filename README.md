@@ -8,64 +8,10 @@ My personal project for the love of Tetris.
 
 ![](demo/test.gif)
 
-## Major update
-
-See the evolution of the new agent [here](https://www.youtube.com/watch?v=v-p-36f5YMw)!
-
-It's been some time since I last updated this page but I'll try to summarize the major changes here and show the latest results.
-
-### Environment
-1. Switch the scores from number of line clears to the raw scores from [Tetris score guideline](https://tetris.wiki/Scoring) (assuming level 1, ignoring T-Spin related ones because I'm too lazy to implement the rotation system).
-2. Add hard-drop action so the agent can possibly plan further ahead (although it doesn't seem like the case)
-
-### Agent
-1. Instead of using exponential moving averages, the mean and variance are now calculated using the [Welford's algorithm](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford%27s_online_algorithm) with initial values inferred from the network (seemed more stable?)
-2. Instead of using two MSE losses for the value and variance training, the [Gaussian likelihood](https://en.wikipedia.org/wiki/Normal_distribution#Estimation_of_parameters) is now used as the loss function which, in my opinion, is much more reasonable probabilistically (also, we don't have to balance the weights between the two MSE losses now) 
-3. Instead of training only the actual played states, the agent is now trained with (almost) all of the traversed states during the tree search which significantly improved the performance of the agent
-4. Added early stopping to automate the training phase instead of some random number of epochs
-
-### Latest results
-The results shown here were trained using the default routine written in `cycle.sh`. In each cycle (or iteration, if you prefer), the agent plays 50 normal games with 500 simulations per move (SPM) and 1 benchmark game with 1000 SPM. 
-During the training phase, 5 episodes from the normal plays were kept as validation set and the other episodes were used for actual training. Here is an example of the loss curve
-<p align="center">
-    <img src="./results/v2/loss_curve.png" width=600> 
-</p>
-<p align="center">
-    <em> Loss curves with a bunch of unused labels </em>
-</p>
-where the y-axis (in log-scale) shows the loss and the x-axis shows the number of epochs. The spikes are caused by the differences between datasets. Interestingly, in later cycles, the agent seemed to start overfitting like crazy even with very few (usually 1) epochs despite that I'm using a rather simple network (two 3x3x32-conv2d and one 128-linear layers), which might suggest that we can try an even smaller model?
-
-Next up, we have the scores of the normal and benchmark plays.
-
-<p align="center">
-    <img src="./results/v2/score_normal.png" width=400> <img src="./results/v2/score_bench.png" width=400>
-</p>
-<p align="center">
-    <em> Average and standard deviation of scores and line clears at each iteration. Left/Right: normal/benchmark. 
-Unsurprisingly, both curves (blue/red) match pretty well with each other (after all, you need to clear lines to score). </em>
-</p>
-
-The thing I want to point out here is that, despite using a more noisy target, the raw scores, the new agent managed to achieve an average number of line clear about 1k at cycle 15 (750 games), which is about ***100 times better than the previous agent*** (although the simulations per move is slightly higher compared to the previous one (300->500)). 
-Also, after the initial exponential growing phase around iteration 4 to 12, the agent seemed to be growing at an even faster rate after the 13th iteration. Unfortunately, my potato only has 8GB RAM and the agent was generating more data than my RAM can fit, so I had to terminate it there. 
-(In theory I could modify the codes to train on larger-than-RAM datasets, but <del>I'm too lazy</del> if the agent continued to grow super-exponentially the problem will probably be larger-than-HDD datasets, which I don't have a solution, in the next few iterations so I will have to terminate it anyway.) 
-
-Finally, I have the [entropy](https://en.wikipedia.org/wiki/Entropy_(information_theory)) of the MCTS policies here
-<p align="center">
-    <img src="./results/v2/entropy_normal.png" width=400> <img src="./results/v2/entropy_bench.png" width=400>
-</p>
-<p align="center">
-    <em> Averaged entropy of the MCTS policies in each iteration. L/R: normal/benchmark. Red line: Maximum entropy with 7 actions. </em>
-</p>
-
-As expected, benchmark plays tend to have lower entropy because UCT would converge to the optimal action, so larger SPM implies lower entropy.
-Interestingly, the agent did not really explored the environment until the 4th iteration where both the entropy and the number of line clears increased significantly.
-
-That's the update for you, hope you enjoyed it!
-
 ## Introduction
 
 This project started out as a practice to apply Deep Q-Learning to Tetris, one of my favourite puzzle games of all time. 
-However, I soon realized that it was almost impossible to train an agent to perform anywhere near human level 
+However, I soon realized that it was almost impossible to train an agent to perform anywhere near human level possibly
 due to the sparsity and long-term dependency of the rewards in Tetris (imagine how many actions you need to perform to clear even one 
 line!). It was also around that time AlphaGo beat Lee Sedol in a dominating fashion that reignited my hopes for a better agent. Also,
 I believed that a model based approach should improve significantly compared to model free approaches (Q learning, policy gradients etc.). So here it is, the MCTS-TD agent inspired by AlphaGo specializing in the game Tetris.
@@ -81,41 +27,46 @@ However, such handcrafted rewards can bias your agents toward the target you set
 
 See `requirements.txt`
 
-You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris).
+You'll also need the Tetris environment from [here](https://github.com/hrpan/pyTetris), and the Python/C++ binding library [pybind11](https://github.com/pybind/pybind11).
 
-## How to run it?
+## Training your agent
 
 You can now train your agent with a single command:
 
-`python play.py --agent_type ValueSim --online --ngames 1000 --mcts_sims 300`
-
-(The following is mostly deprecated. Will cleanup soon.) 
-
-* `play.py` script for agent play or manual play <br> (e.g. `python play.py --selfplay --agent_type ValueSim`)
-* `train.py` script for training the neural network <br> (e.g. `python train.py --data_paths data/self1/data1`)
-* `tools/plot_score.py` script for plotting the score curve <br> (e.g. `python tools/plot_score.py --data_paths data/self1/data*`)
-* `tools/plot_entropy.py` script for plotting the entropy curve <br> (e.g. `python tools/plot_entropy.py --data_paths data/self1/data*`)
-* `tools/plot_loss.py` script for plotting the loss curve <br> (e.g. `python tools/plot_loss.py data/loss`)
-* `tools/replay.py` GUI for replaying <br> (e.g. `python tools/replay.py --data_paths data/self1/data1`)
-* `web/web_dash.py` A simple plotly based web app for monitoring 
-
-The default routine is written in `cycle.sh`, if you are unsure what to do simply use `./cycle.sh` and things should get going.
-
-
+`python play.py --agent_type ValueSimLP --online --ngames 1000 --mcts_sims 100`
 
 ## Results
 
+### Version 1.0
 See the agent in action [here](https://www.youtube.com/watch?v=EALo2GfZuYU)!
 
-In the default routine (`cycle.sh`), each iteration consists of 100 games with 300 MCTS simulations per move to generate the 
-training data and 1 benchmark game with 1500 MCTS simulations per move to test the performance of the agent.
+The agent was trained with 300 simulations per move (SPM) and each training iteration consisted of 100 games.
+In each iteration, a benchmark game with 1500 SPM was also played to assert the agent's performance.
 
-<img src="./results/score.png" width=400> <img src="./results/benchmark.png" width=400>
+<p align="center">
+    <img src="./results/score.png" width=400> <img src="./results/benchmark.png" width=400>
+</p>
+<p align="center">
+    <em> Averaged and standard deviation of line clears from training/benchmark games. (Left: training; Right: benchmark.) </em>
+</p>
 
-Left one is the normal (300 simulations) play, right one is the benchmark (1500 simulations) play. As a baseline, vanilla MCTS agent (no neural network) has an average score about 7 lines with 300 simulations per move.
+### Version 2.0
+See the evolution of the agent [here](https://www.youtube.com/watch?v=v-p-36f5YMw)!
 
-As can be seen in the graphs, the agent is still improving even after 13 iterations (1300 games), however, it takes more than 10 hours to finish one iteration on my potato so I had to terminate it early. To the best of my knowledge, this result beats all non-heuristic agents.
+The reward function was replaced by the one used in [the official guideline](https://tetris.wiki/Scoring).
+Training games were played with 500 SPM, and benchmark games were played with 1000 SPM.
+Instead of training only on the actual visited states, states travelled during MCTS were also used as training data.
 
+Achieved 5678 line clears with 1000 SPM after 750 training episodes. Had to terminate because I ran out of RAM. 
+<p align="center">
+    <img src="./results/v2/score_normal.png" width=400> <img src="./results/v2/score_bench.png" width=400>
+</p>
+<p align="center">
+    <em> Average and standard deviation of scores and line clears at each iteration. (Left: training; Right: benchmark). </em>
+</p>
+
+### Version 3.0
+???
 
 ## Further Readings
 1. [Reinforcement Learning: An Introduction](https://mitpress.mit.edu/books/reinforcement-learning-second-edition) (Must read for anyone interested in reinforcement learning)
@@ -125,4 +76,6 @@ As can be seen in the graphs, the agent is still improving even after 13 iterati
 5. [Bandit Algorithm](http://banditalgs.com/) (Contains almost everything you need to know about bandit-like algorithms)
 6. [Deep Learning](https://www.deeplearningbook.org/) (Great introductory book on deep learning)
 7. [Mastering the game of Go without human knowledge](https://www.nature.com/articles/nature24270) (Original AlphaGo Zero paper)
-8. [Deep Reinforcement Learning: Pong from Pixels](http://karpathy.github.io/2016/05/31/rl/) (Great introductory article on reinforcement learning)
+8. [Deep Reinforcement Learning: Pong from Pixels](http://karpathy.github.io/2016/05/31/rl/) (Great introductory article on deep reinforcement learning)
+9. [The Game of Tetris in Machine Learning](https://arxiv.org/abs/1905.01652) (Great introduction to the history of Tetris in machine learning)
+10. [Playing Tetris with Deep Reinforcement Learning](http://cs231n.stanford.edu/reports/2016/pdfs/121_Report.pdf) (A short report on DQN applied to Tetris)
