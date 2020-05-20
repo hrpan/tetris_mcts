@@ -248,6 +248,63 @@ void backup_trace_obs(
     }
 }
 
+void backup_trace_obs_LP(
+        py::array_t<int, 1> &trace,
+        py::array_t<int, 1> &visit,
+        py::array_t<float, 1> &value,
+        py::array_t<float, 1> &variance,
+        py::array_t<int, 1> &n_to_o,
+        py::array_t<float, 1> &score,
+        py::array_t<bool, 1> &end,
+        std::vector<int> &_child,
+        std::vector<int> &_obs,
+        py::array_t<float, 1> &_value,
+        py::array_t<float, 1> &_variance,
+        double gamma){
+
+    auto trace_uc = trace.unchecked<1>();
+    auto visit_uc = visit.mutable_unchecked<1>();
+    auto value_uc = value.mutable_unchecked<1>();
+    auto variance_uc = variance.mutable_unchecked<1>();
+    auto score_uc = score.unchecked<1>();
+    auto end_uc = end.unchecked<1>();
+    auto _value_uc = _value.unchecked<1>();
+    auto _variance_uc = _variance.unchecked<1>();
+
+
+    double val_mean = 0;
+    double var_mean = 0;
+    if(_child.size() > 0){
+        for(int i=0; i < _child.size(); ++i){
+            int __c = _child[i];
+            int __o = _obs[i];
+            double val_tmp = 0;
+            double var_tmp = 0;
+            if(visit_uc(__o) > 0){
+                val_mean += value_uc(__o) + score_uc(__c);
+                var_mean += variance_uc(__o); 
+                continue;
+            }else if(!end_uc(__c)){
+                val_tmp = _value_uc(i);
+                var_tmp = _variance_uc(i);
+            }
+            visit_uc(__o) += 1;
+            value_uc(__o) = val_tmp;
+            variance_uc(__o) = var_tmp;
+            val_mean += score_uc(__c) + val_tmp;
+            var_mean += var_tmp;
+        }
+        val_mean /= _child.size();
+        var_mean /= _child.size();
+    }else{
+        val_mean = score_uc(trace_uc(-1));
+        var_mean = 0;
+    }
+    backup_trace_obs(
+        trace, visit, value, variance,
+        n_to_o, score, val_mean, var_mean, gamma);
+}
+
 /*
     PYBIND11
 */
@@ -257,4 +314,5 @@ PYBIND11_MODULE(core, m){
     m.def("get_unique_child_obs", &get_unique_child_obs_);
     m.def("select_trace_obs", &select_trace_obs);
     m.def("backup_trace_obs", &backup_trace_obs);
+    m.def("backup_trace_obs_LP", &backup_trace_obs_LP);
 }
