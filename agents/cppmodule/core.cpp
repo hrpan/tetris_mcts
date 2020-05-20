@@ -271,7 +271,6 @@ void backup_trace_obs_LP(
     auto _value_uc = _value.unchecked<1>();
     auto _variance_uc = _variance.unchecked<1>();
 
-
     double val_mean = 0;
     double var_mean = 0;
     if(_child.size() > 0){
@@ -297,7 +296,7 @@ void backup_trace_obs_LP(
         val_mean /= _child.size();
         var_mean /= _child.size();
     }else{
-        val_mean = score_uc(trace_uc(-1));
+        val_mean = score_uc(trace_uc(trace.shape(0) - 1));
         var_mean = 0;
     }
     backup_trace_obs(
