@@ -1,6 +1,6 @@
 import numpy as np
 from agents.ValueSim import ValueSim
-from agents.cppmodule.core import get_all_childs, select_trace_obs, backup_trace_obs
+from agents.cppmodule.core import get_all_childs, select_trace_obs, backup_trace_obs_LP
 from agents.cppmodule.core import get_unique_child_obs
 
 
@@ -8,7 +8,7 @@ class ValueSimLP(ValueSim):
 
     def __init__(self, **kwargs):
 
-        super().__init__(**kwargs)
+        super().__init__(min_visits_to_store=5, **kwargs)
 
     def evaluate_states(self, states):
 
@@ -21,17 +21,22 @@ class ValueSimLP(ValueSim):
         child = self.arrays['child']
         score = self.arrays['score']
         games = self.game_arr
+        eval_ = self.evaluate_states
 
         if self.projection:
+            state = self.obs_arrays['state']
             visit = self.obs_arrays['visit']
             value = self.obs_arrays['value']
             variance = self.obs_arrays['variance']
+            end = self.arrays['end']
             n_to_o = self.node_to_obs
             s_args = [root_index, child, visit, value, variance, score, n_to_o, 1]
             selection = select_trace_obs
-            b_args = [None, visit, value, variance, n_to_o, score, None, None, self.gamma]
+            b_args = [
+                None, visit, value, variance, n_to_o, score,
+                end, None, None, None, None, self.gamma]
             #backup = backup_trace_mixture_obs
-            backup = backup_trace_obs
+            backup = backup_trace_obs_LP
         else:
             visit = self.arrays['visit']
             value = self.arrays['value']
@@ -48,38 +53,24 @@ class ValueSimLP(ValueSim):
 
             leaf_game = games[leaf_index]
 
-            _value, _variance = leaf_game.score, 0
             if not leaf_game.end:
 
                 self.expand(leaf_game)
 
                 _c, _o = get_unique_child_obs(leaf_index, child, score, n_to_o)
 
-                states = self.obs_arrays['state'][_o]
+                states = state[_o]
 
-                v, var = self.evaluate_states(states)
-
-                _variance = np.mean(var)
-
-                vmean = 0
-                for __c, __o, __v, __var in zip(_c, _o, v, var):
-                    if visit[__o] > 0:
-                        vmean += value[__o] + score[__c]
-                        continue
-                    elif games[__c].end:
-                        value[__o] = 0
-                        variance[__o] = 0
-                        vmean += score[__c]
-                    else:
-                        value[__o] = __v
-                        variance[__o] = __var
-                        vmean += __v + score[__c]
-                    visit[__o] = 1
-                _value = vmean / len(v)
+                v, var = eval_(states)
+            else:
+                _c = _o = []
+                v = var = np.empty(0, dtype=np.float32)
 
             b_args[0] = trace
-            b_args[-3] = _value
-            b_args[-2] = _variance
+            b_args[-5] = _c
+            b_args[-4] = _o
+            b_args[-3] = v
+            b_args[-2] = var
             backup(*b_args)
             #print(i, visit[n_to_o[self.root]], value[n_to_o[self.root]], variance[n_to_o[self.root]])
             #input()
