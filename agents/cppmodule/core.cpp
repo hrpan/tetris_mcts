@@ -340,16 +340,19 @@ void backup_trace_obs_LP(
                 }
             }
             if(averaged){
-                v_tmp += score_uc(__c) + value_uc(__o);
+                v_tmp += score_uc(__c) + gamma * value_uc(__o);
                 var_tmp += variance_uc(__o);
             }else{
                 backup(trace, visit, value, variance, n_to_o, score,
-                       value_uc(__o) + score_uc(__c), variance_uc(__o), gamma);
+                       value_uc(__o) + gamma * score_uc(__c),
+                       gamma * gamma * variance_uc(__o), gamma);
             }
         }
-        if(averaged)
-            backup(trace, visit, value, variance, n_to_o, score,
-                   v_tmp / _child.size(), var_tmp / _child.size(), gamma);
+        if(averaged){
+            v_tmp /= _child.size();
+            var_tmp *= (gamma * gamma / _child.size());
+            backup(trace, visit, value, variance, n_to_o, score, v_tmp, var_tmp, gamma);
+        }
     }else{
         backup(trace, visit, value, variance, n_to_o, score,
                score_uc(trace_uc(trace.shape(0) - 1)), 0, gamma);
