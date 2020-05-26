@@ -18,9 +18,7 @@ class Net(nn.Module):
         kernel_size = 3
         stride = 1
         filters = 32
-        groups = 8
         bias = True
-        #bias = False
 
         self.activation = nn.LeakyReLU(inplace=True)
         #self.activation = nn.ReLU(inplace=True)
@@ -39,29 +37,24 @@ class Net(nn.Module):
                 ('fc1', nn.Linear(flat_in, n_fc)),
                 ('fc_act1', self.activation),
                 ('fc_out', nn.Linear(n_fc, 2)),
-                #('act_out', nn.Softplus())
+                ('act_out', nn.Sigmoid()),
             ]))
 
         #self.head.fc_out.bias.data[0].fill_(1e2)
-        #self.head.fc_out.bias.data[1].fill_(1e2)
+        #self.head.fc_out.bias.data[1].fill_(1e4)
 
-        self.value_bound = nn.Parameter(torch.tensor([1e3]), requires_grad=False)
-        self.variance_bound = nn.Parameter(torch.tensor([1e5]), requires_grad=False)
-
-        self.eps = nn.Parameter(torch.tensor([eps]), requires_grad=False)
+        self.out_ubound = nn.Parameter(torch.tensor([1e3, 1e6]), requires_grad=False)
+        self.out_lbound = nn.Parameter(torch.tensor([0, eps]), requires_grad=False)
 
     def forward(self, x):
 
-        x = self.head(x).sigmoid()
-        #x = self.head(x)
-        value, variance = x.split(1, dim=1)
-        value = value.mul(self.value_bound)
-        variance = variance.mul(self.variance_bound).add(self.eps)
+        x = self.head(x)
+        x = x * self.out_ubound + self.out_lbound
         #variance = variance.exp().add(self.eps)
         #variance = variance.add(self.eps)
         #variance = variance.pow(2).add(self.eps)
         #variance = F.softplus(variance).add(self.eps)
-        return value, variance
+        return x
 
 
 class Ensemble(nn.Module):
@@ -133,7 +126,6 @@ class Model_VV(Model):
             self.l_func = lambda x, y: (x - y) ** 2
         elif loss_type == 'kldiv' or loss_type == 'mle':
             self.l_func = GaussianLL()
-            #self.l_func = WeakGaussianLL()
         elif loss_type == 'mle_approx':
             self.l_func = lambda v_p, mu_p, v, mu: (1 - v_p / v) ** 2 + 2 * (mu - mu_p) ** 2 / v
 
@@ -145,8 +137,8 @@ class Model_VV(Model):
         self.model = torch.jit.script(self.model)
 
         #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-2, eps=1e-3)
-        self.optimizer = Yogi(self.model.parameters(), lr=1e-3, eps=1e-2)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95, nesterov=True)
+        #self.optimizer = Yogi(self.model.parameters(), lr=1e-4, eps=1e-3)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.99, nesterov=True)
 
         self.scheduler = None
 
@@ -158,7 +150,7 @@ class Model_VV(Model):
 
         variance.clamp_(min=variance_clip)
 
-        _v, _var = self.model(state)
+        _v, _var = self.model(state).split(1, dim=1)
         if self.loss_type == 'mle' or self.loss_type == 'kldiv':
             if weighted:
                 std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
@@ -224,6 +216,15 @@ class Model_VV(Model):
 
         self.fisher = fisher
 
+    def inference(self, batch):
+
+        b = torch.as_tensor(batch, dtype=torch.float, device=self.device)
+
+        with torch.no_grad():
+            output = self.model(b).cpu().split(1, dim=1)
+
+        return [o.numpy() for o in output]
+
     def inference_stochastic(self, batch):
 
         result = self.inference(batch)
@@ -233,8 +234,8 @@ class Model_VV(Model):
         return result
 
     def train_data(self, data, **kwargs):
-        self.model.value_bound.fill_(max(self.model.value_bound.item(), data[1].max()))
-        self.model.variance_bound.fill_(max(self.model.variance_bound.item(), data[2].max()))
+        d_bound = torch.tensor([data[1].max(), data[2].max()], device=self.device)
+        self.model.out_ubound = torch.max(self.model.out_ubound, d_bound)
 
         super().train_data(data, **kwargs)
 
