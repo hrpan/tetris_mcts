@@ -8,6 +8,7 @@ setup_pybind11(cfg)
 #include<deque>
 #include<algorithm>
 #include<cstdlib>
+#include<functional>
 #include<special.h>
 #include<iostream>
 #include<pybind11/pybind11.h>
@@ -38,7 +39,7 @@ std::unordered_set<size_t> get_all_childs(size_t index, py::array_t<int, 1> chil
     for(size_t i=0; i < to_traverse.size(); ++i){
         auto pair = traversed.insert(to_traverse[i]);
         if(pair.second){
-            for(size_t c=0; c < child.shape(1); ++c){
+            for(int c=0; c < child.shape(1); ++c){
                 size_t _c = *child.data(*pair.first, c);
                 if(traversed.find(_c) == traversed.end())
                     to_traverse.push_back(_c);
@@ -161,12 +162,10 @@ py::array_t<int, 1> select_trace_obs(
         py::array_t<int, 1> &n_to_o,
         size_t low){
 
-    auto child_uc = child.unchecked<2>();
     auto visit_uc = visit.unchecked<1>();
     auto value_uc = value.unchecked<1>();
     auto variance_uc = variance.unchecked<1>();
     auto score_uc = score.unchecked<1>();
-    auto n_to_o_uc = n_to_o.unchecked<1>();
 
     std::vector<int> trace;
 
@@ -248,6 +247,47 @@ void backup_trace_obs(
     }
 }
 
+void backup_trace_mixture_obs(
+        py::array_t<int, 1> &trace,
+        py::array_t<int, 1> &visit,
+        py::array_t<float, 1> &value,
+        py::array_t<float, 1> &variance,
+        py::array_t<int, 1> &n_to_o,
+        py::array_t<float, 1> &score,
+        double _value,
+        double _variance,
+        double gamma){
+
+    auto trace_uc = trace.unchecked<1>();
+    auto visit_uc = visit.mutable_unchecked<1>();
+    auto value_uc = value.mutable_unchecked<1>();
+    auto variance_uc = variance.mutable_unchecked<1>();
+    auto score_uc = score.unchecked<1>();
+    auto n_to_o_uc = n_to_o.unchecked<1>();
+
+    for(int i=trace.size() - 1; i >= 0; --i){
+        int idx = trace_uc(i);
+        _value -= score_uc(idx);
+        int o = n_to_o_uc(idx);
+
+        visit_uc(o) += 1;
+
+        double v_diff = _value - value_uc(o);
+        double v_sq_diff = _value * _value - value_uc(o) * value_uc(o);
+
+        double v_tmp = value_uc(o);
+
+        value_uc(o) += v_diff / visit_uc(o);
+
+        double var_diff = _variance - variance_uc(o);
+
+        variance_uc(o) += (var_diff + v_sq_diff) / visit_uc(o) - (v_diff / visit_uc(o)) * (v_tmp + value_uc(o));
+
+        _value = gamma * _value + score_uc(idx);
+        _variance *= gamma;
+    }
+}
+
 void backup_trace_obs_LP(
         py::array_t<int, 1> &trace,
         py::array_t<int, 1> &visit,
@@ -260,7 +300,9 @@ void backup_trace_obs_LP(
         std::vector<int> &_obs,
         py::array_t<float, 1> &_value,
         py::array_t<float, 1> &_variance,
-        double gamma){
+        double gamma,
+        bool mixture,
+        bool averaged){
 
     auto trace_uc = trace.unchecked<1>();
     auto visit_uc = visit.mutable_unchecked<1>();
@@ -271,37 +313,56 @@ void backup_trace_obs_LP(
     auto _value_uc = _value.unchecked<1>();
     auto _variance_uc = _variance.unchecked<1>();
 
-    double val_mean = 0;
-    double var_mean = 0;
+    std::function<void(
+        py::array_t<int, 1>&, py::array_t<int, 1>&, py::array_t<float, 1>&,
+        py::array_t<float, 1>&, py::array_t<int, 1>&, py::array_t<float, 1>&, 
+        double, double, double)> backup;
+
+    if(mixture)
+        backup = backup_trace_mixture_obs;
+    else
+        backup = backup_trace_obs;
+
     if(_child.size() > 0){
-        for(int i=0; i < _child.size(); ++i){
+        double v_tmp, var_tmp;
+        v_tmp = var_tmp = 0;
+        for(size_t i=0; i < _child.size(); ++i){
             int __c = _child[i];
             int __o = _obs[i];
-            double val_tmp = 0;
-            double var_tmp = 0;
-            if(visit_uc(__o) > 0){
-                val_mean += value_uc(__o) + score_uc(__c);
-                var_mean += variance_uc(__o); 
-                continue;
-            }else if(!end_uc(__c)){
-                val_tmp = _value_uc(i);
-                var_tmp = _variance_uc(i);
+            if(visit_uc(__o) == 0){
+                visit_uc(__o) += 1;
+                if(end_uc(__c)){
+                    value_uc(__o) = 0;
+                    variance_uc(__o) = 0;
+                }else{
+                    value_uc(__o) = _value_uc(i);
+                    variance_uc(__o) = _variance_uc(i);
+                }
             }
-            visit_uc(__o) += 1;
-            value_uc(__o) = val_tmp;
-            variance_uc(__o) = var_tmp;
-            val_mean += score_uc(__c) + val_tmp;
-            var_mean += var_tmp;
+            if(averaged){
+                v_tmp += score_uc(__c) + value_uc(__o);
+                var_tmp += variance_uc(__o);
+            }else{
+                backup(trace, visit, value, variance, n_to_o, score,
+                       value_uc(__o) + score_uc(__c), variance_uc(__o), gamma);
+            }
         }
-        val_mean /= _child.size();
-        var_mean /= _child.size();
+        if(averaged)
+            backup(trace, visit, value, variance, n_to_o, score,
+                   v_tmp / _child.size(), var_tmp / _child.size(), gamma);
     }else{
-        val_mean = score_uc(trace_uc(trace.shape(0) - 1));
-        var_mean = 0;
+        backup(trace, visit, value, variance, n_to_o, score,
+               score_uc(trace_uc(trace.shape(0) - 1)), 0, gamma);
     }
-    backup_trace_obs(
-        trace, visit, value, variance,
-        n_to_o, score, val_mean, var_mean, gamma);
+
+    //if(mixture)
+    //    backup_trace_mixture_obs(
+    //        trace, visit, value, variance,
+    //        n_to_o, score, val_mean, var_mean, gamma);
+    //else
+    //    backup_trace_obs(
+    //        trace, visit, value, variance,
+    //        n_to_o, score, val_mean, var_mean, gamma);
 }
 
 /*
