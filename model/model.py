@@ -226,7 +226,7 @@ class Model:
                         if fails >= early_stopping_patience:
                             break
 
-                print('Iteration:{:7d}  training loss:{:6.3f}  validation loss:{:6.3f}±{:6.3f}  gradient norm:{:6.3f}    {}'
+                print('Iteration:{:7d}  training loss:{:6.4f}  validation loss:{:6.4f}±{:6.4f}  gradient norm:{:6.3f}    {}'
                       .format(iters+1, loss_avg * bias_coeff, loss_val_mean, loss_val_std, g_norm_avg * bias_coeff, suffix), **perr)
 
         if early_stopping:
