@@ -7,29 +7,18 @@ import torch.utils.data as D
 import os
 import numpy as np
 from collections import defaultdict, OrderedDict
-IMG_H, IMG_W, IMG_C = (22, 10, 1)
+from model.yogi import Yogi
+from model.model import convOutShape, Model
 
 EXP_PATH = './pytorch_model/'
 
 n_actions = 7
 
 
-def convOutShape(shape_in, kernel_size, stride):
-
-    if type(kernel_size) is not tuple:
-        kernel_size = (kernel_size, kernel_size)
-
-    if type(stride) is not tuple:
-        stride = (stride, stride)
-
-    return ((shape_in[0] - kernel_size[0]) // stride[0] + 1,
-            (shape_in[1] - kernel_size[1]) // stride[1] + 1)
-
-
 class Net(nn.Module):
 
-    def __init__(self, atoms=50):
-        super(Net, self).__init__()
+    def __init__(self, input_shape=(22, 10), atoms=50):
+        super().__init__()
 
         kernel_size = 4
         stride = 1
@@ -37,24 +26,18 @@ class Net(nn.Module):
 
         _shape = convOutShape((22, 10), kernel_size, stride)
         _shape = convOutShape(_shape, kernel_size, stride)
-        _shape = convOutShape(_shape, kernel_size, stride)
 
         flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc1 = 512
+        n_fc1 = 128
 
-        activation = nn.ReLU()
+        activation = nn.LeakyReLU(inplace=True)
 
         self.seq = nn.Sequential(OrderedDict([
                     ('conv1', nn.Conv2d(1, filters, kernel_size, stride)),
                     ('act1', activation),
-                    #('bn1', nn.BatchNorm2d(filters)),
                     ('conv2', nn.Conv2d(filters, filters, kernel_size, stride)),
                     ('act2', activation),
-                    #('bn2', nn.BatchNorm2d(filters)),
-                    ('conv3', nn.Conv2d(filters, filters, kernel_size, stride)),
-                    ('act3', activation),
-                    #('bn3', nn.BatchNorm2d(filters)),
                     ('flatten', nn.Flatten()),
                     ('fc1', nn.Linear(flat_in, n_fc1)),
                     ('act3', activation),
@@ -74,174 +57,46 @@ class Net(nn.Module):
         return value
 
 
-def convert(x):
-    return torch.from_numpy(x.astype(np.float32))
+class Model_Dist(Model):
+    def __init__(self, atoms=50, **kwargs):
 
-
-class Model:
-    def __init__(self, training=False, new=True, use_cuda=True, atoms=50):
-
-        self.use_cuda = use_cuda
-
-        if torch.cuda.is_available() and self.use_cuda:
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
-
-        self.training = training
+        super().__init__(**kwargs)
 
         self.model = Net(atoms=atoms)
-        if self.use_cuda:
-            self.model = self.model.cuda()
+
         self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4, eps=1e-5, amsgrad=True)
         #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.9, nesterov=True)
         self.scheduler = None
         #self.scheduler = optim.lr_scheduler.LambdaLR(self.optimizer, lambda step: max(0.9 ** step, 1e-2))
 
-    def _loss(self, batch):
+    def _init_model(self):
 
-        state, value, weight = batch
-
-        if type(state) is not torch.Tensor:
-            state = torch.from_numpy(state)
-            value = torch.from_numpy(value)
-            weight = torch.from_numpy(weight)
-
+        self.model = Net()
         if self.use_cuda:
-            state = state.cuda()
-            value = value.cuda()
-            weight = weight.cuda()
+            self.model = self.model.cuda()
+        self.model = torch.jit.script(self.model)
+
+        self.optimizer = Yogi(self.model.parameters(), lr=1e-3, eps=1e-3)
+
+    def _loss(self, batch, weighted=False):
+
+        batch_tensor = [torch.as_tensor(b, dtype=torch.float, device=self.device) for b in batch]
+        state, value, weight = batch_tensor
 
         _v = self.model.log_prob(state)
-        loss = torch.std_mean(-weight.squeeze() * (value * (_v - value.log())).sum(dim=1))
 
-        return defaultdict(float, loss=loss[1], loss_std=loss[0])
+        loss = -value * (_v - value.log())
+        if weighted:
+            loss = weight.squeeze() * loss
+        std, mean = torch.std_mean(loss.sum(dim=1))
 
-    def compute_loss(self, batch, chunksize=2048):
-
-        self.model.eval()
-
-        result = defaultdict(float)
-        d_size = len(batch[0])
-        ls, stds, bs = [], [], []
-        with torch.no_grad():
-            for c in range((d_size + chunksize - 1) // chunksize):
-                b = [d[c * chunksize: (c + 1) * chunksize] for d in batch]
-                loss = self._loss(b)
-                ls.append(loss['loss'].item())
-                stds.append(loss['loss_std'].item())
-                bs.append(len(b[0]))
-
-        b = np.array(bs)
-        l = np.array(ls)
-        l_avg = np.sum(l * b) / d_size
-        result['loss'] = l_avg
-
-        std = np.array(stds)
-        l_sq = (b - 1) * std ** 2 / b + l ** 2
-        l_sq_combined = np.sum(l_sq * b) / d_size
-        l_std_combined = ((l_sq_combined - l_avg ** 2) * d_size / (d_size - 1)) ** 0.5
-
-        result['loss_std'] = l_std_combined
-
-        return result
-
-    def train(self, batch):
-
-        self.model.train()
-
-        self.optimizer.zero_grad()
-
-        loss = self._loss(batch)
-
-        loss['loss'].backward()
-        #norm = 0.
-        #for p in self.model.parameters():
-        #    if p.grad is None:
-        #        continue
-        #    norm += p.grad.data.norm(2).item() ** 2
-        #norm = norm ** 0.5
-        #print(' ', norm)
-        #if norm > 100:
-        #    input()
-        #U.clip_grad_norm_(self.model.parameters(), 10)
-
-        self.optimizer.step()
-
-        return {k: v.item() for k, v in loss.items()}
+        return defaultdict(float, loss=mean, loss_std=std)
 
     def inference(self, batch):
 
-        self.model.eval()
-
-        b = torch.from_numpy(batch).float()
-        if self.use_cuda:
-            b = b.cuda()
+        b = torch.as_tensor(batch, dtype=torch.float, device=self.device)
 
         with torch.no_grad():
-            output = self.model(b)
+            output = self.model(b).cpu()
 
-        result = [o.cpu().numpy() for o in output]
-
-        return result
-
-    def inference_stochastic(self, batch):
-
-        self.model.eval()
-
-        #state = convert(batch)
-        b = torch.from_numpy(batch).float()
-        if self.use_cuda:
-            b = b.cuda()
-
-        with torch.no_grad():
-            output = self.model(b)
-
-        result = [o.cpu().numpy() for o in output]
-        v = np.random.normal(result[0], np.sqrt(result[1]))
-        result[0] = v
-        return result
-
-    def reset_optimizer(self):
-
-        self.optimizer.state = defaultdict(dict)
-
-    def update_scheduler(self, **kwarg):
-
-        if self.scheduler:
-            self.scheduler.step(**kwarg)
-
-    def save(self, verbose=True):
-
-        if verbose:
-            print('Saving model...', flush=True)
-
-        if not os.path.isdir(EXP_PATH):
-            if verbose:
-                print('Export path does not exist, creating a new one...', flush=True)
-            os.mkdir(EXP_PATH)
-
-        filename = EXP_PATH + 'model_checkpoint'
-
-        full_state = {
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                }
-
-        if self.scheduler:
-            full_state['scheduler_state_dict'] = self.scheduler.state_dict()
-
-        torch.save(full_state, filename)
-
-    def load(self, filename=EXP_PATH + 'model_checkpoint'):
-
-        if os.path.isfile(filename):
-            print('Loading model...', flush=True)
-            checkpoint = torch.load(filename, map_location=self.device)
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.p0 = [p.clone() for p in self.model.parameters()]
-            if self.scheduler:
-                self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        else:
-            print('Checkpoint not found, using default model', flush=True)
+        return [output.numpy()]
