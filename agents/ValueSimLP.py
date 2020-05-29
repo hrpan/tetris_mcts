@@ -8,7 +8,7 @@ class ValueSimLP(ValueSim):
 
     def __init__(self, **kwargs):
 
-        super().__init__(min_visits_to_store=5, **kwargs)
+        super().__init__(min_visits_to_store=10, **kwargs)
 
     def evaluate_states(self, states):
 
@@ -32,10 +32,11 @@ class ValueSimLP(ValueSim):
             n_to_o = self.node_to_obs
             s_args = [root_index, child, visit, value, variance, score, n_to_o, 1]
             selection = select_trace_obs
+            mixture = True
+            averaged = True
             b_args = [
                 None, visit, value, variance, n_to_o, score,
-                end, None, None, None, None, self.gamma]
-            #backup = backup_trace_mixture_obs
+                end, None, None, None, None, self.gamma, mixture, averaged]
             backup = backup_trace_obs_LP
         else:
             visit = self.arrays['visit']
@@ -67,10 +68,13 @@ class ValueSimLP(ValueSim):
                 v = var = np.empty(0, dtype=np.float32)
 
             b_args[0] = trace
-            b_args[-5] = _c
-            b_args[-4] = _o
-            b_args[-3] = v
-            b_args[-2] = var
+            b_args[-7] = _c
+            b_args[-6] = _o
+            b_args[-5] = v
+            b_args[-4] = var
             backup(*b_args)
+
             #print(i, visit[n_to_o[self.root]], value[n_to_o[self.root]], variance[n_to_o[self.root]])
+            #_ro = n_to_o[child[self.root]]
+            #print(visit[_ro].astype(int), value[_ro].astype(int), variance[_ro].astype(int))
             #input()
