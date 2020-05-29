@@ -6,9 +6,11 @@ setup_pybind11(cfg)
 */
 #include<unordered_set>
 #include<deque>
+#include<array>
 #include<algorithm>
 #include<cstdlib>
 #include<functional>
+#include<cmath>
 #include<special.h>
 #include<iostream>
 #include<pybind11/pybind11.h>
@@ -366,6 +368,74 @@ void backup_trace_obs_LP(
     //    backup_trace_obs(
     //        trace, visit, value, variance,
     //        n_to_o, score, val_mean, var_mean, gamma);
+}
+
+/*
+   DISTRIBUTIONAL
+*/
+
+py::array_t<float> transform_distribution(py::array_t<float, 1> &dist, double vmin, double vmax, double shift, double scale){
+    auto dist_uc = dist.unchecked<1>();
+    int bins = dist.size();
+
+    std::vector<float> result;
+    result.resize(bins);
+
+    double delta = (vmax - vmin) / bins;
+    double bin_shift = shift / delta;
+    for(int b=0; b < bins; ++b){
+        double lb = std::max(b * scale + bin_shift, 0.);
+        int b_lb = std::floor(lb);
+        double ub = std::min(lb + scale, double(bins));
+        int b_ub = std::floor(ub);
+
+        double frac = b_ub - lb;
+
+        result[b_lb] += dist_uc(b) * frac;
+        result[b_ub] += dist_uc(b) * (1 - frac);
+    }
+    return py::array_t<float>(result.size(), &result[0]);
+}
+
+double mean_dist(py::array_t<float, 1> &dist, double vmin, double vmax){
+    auto dist_uc = dist.unchecked<1>();
+    int bins = dist.size();
+
+    double delta = (vmax - vmin) / bins;
+
+    double mean, m2;
+    mean = m2 = 0;
+
+    double center = vmin + 0.5 * delta;
+    for(int b=0; b < bins; ++b){
+        mean += center * dist_uc(b);
+        center += delta;
+    }
+
+    return mean;
+}
+
+std::array<double, 2> mean_variance_dist(py::array_t<float, 1> &dist, double vmin, double vmax){
+    auto dist_uc = dist.unchecked<1>();
+    int bins = dist.size();
+
+    double delta = (vmax - vmin) / bins;
+
+    double mean, m2;
+    mean = m2 = 0;
+
+    double center = vmin + 0.5 * delta;
+    for(int b=0; b < bins; ++b){
+        double tmp = center * dist_uc(b);
+        mean += tmp;
+        m2 += center * tmp;
+        center += delta;
+    }
+    double var = m2 - mean * mean;
+
+    std::array<double, 2> result = {mean, var};
+
+    return result;
 }
 
 /*
