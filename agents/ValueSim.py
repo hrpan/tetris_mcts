@@ -11,7 +11,7 @@ perr = dict(file=stderr, flush=True)
 
 class ValueSim(TreeAgent):
 
-    def __init__(self, online=True, memory_size=500000, min_visits_to_store=10, gamma=0.999, episodes_per_train=10, memory_growth_rate=10000, **kwargs):
+    def __init__(self, online=True, memory_size=500000, min_visits_to_store=10, gamma=0.999, memory_growth_rate=5000, **kwargs):
 
         super().__init__(max_nodes=100000, **kwargs)
 
@@ -33,7 +33,6 @@ class ValueSim(TreeAgent):
 
             self.n_trains = 0
             self.memory_growth_rate = memory_growth_rate
-            self.episodes_per_train = episodes_per_train
             self.last_episode = 0
 
         self.min_visits_to_store = min_visits_to_store
@@ -167,17 +166,6 @@ class ValueSim(TreeAgent):
 
         d_size = self.memory_index
 
-        #if self.episode - self.last_episode >= self.episodes_per_train:
-        #    print('Enough episodes ({} >= {}), proceed to training.'
-        #          .format(self.episode - self.last_episode, self.episodes_per_train), **perr)
-        #    self.last_episode = self.episode
-        #elif d_size == self.memory_size:
-        #    print('Memory limit reached, proceed to training.')
-        #    self.last_episode = self.episode
-        #else:
-        #    print('Not enough episodes ({} < {}), collecting more episodes.'
-        #          .format(self.episode - self.last_episode, self.episodes_per_train), **perr)
-        #    return None
         m_size = min(self.n_trains * self.memory_growth_rate, self.memory_size)
         if d_size >= m_size:
             print('Enough training data ({} >= {}), proceed to training.'.format(d_size, m_size), **perr)
@@ -189,7 +177,7 @@ class ValueSim(TreeAgent):
             np.savez('./data/dump', states=states[:d_size], values=values[:d_size], variance=variance[:d_size], weights=weights[:d_size])
 
         self.n_trains += 1
-        self.model.train_data([d[:d_size] for d in self.memory], iters_per_val=100, batch_size=512, max_iters=50000)
+        self.model.train_data([d[:d_size] for d in self.memory], iters_per_val=100, batch_size=1024, max_iters=50000)
         self.model.training(False)
 
         self.memory_index = 0
