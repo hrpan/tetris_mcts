@@ -189,7 +189,7 @@ py::array_t<int, 1> select_trace_obs(
         get_unique_child_obs(index, child, score, n_to_o, c_nodes, c_obs);
         if(c_nodes.empty())
             break;
-        auto o = check_low(c_obs, visit, low);
+        int o = check_low(c_obs, visit, low);
 
         size_t _s = c_nodes.size();
         if(o == 0){
@@ -274,19 +274,19 @@ void backup_trace_mixture_obs(
 
         visit_uc(o) += 1;
 
-        double v_diff = _value - value_uc(o);
         double v_sq_diff = _value * _value - value_uc(o) * value_uc(o);
 
         double v_tmp = value_uc(o);
 
-        value_uc(o) += v_diff / visit_uc(o);
+        double delta = (_value - value_uc(o)) / visit_uc(o);
+        value_uc(o) += delta;
 
         double var_diff = _variance - variance_uc(o);
 
-        variance_uc(o) += (var_diff + v_sq_diff) / visit_uc(o) - (v_diff / visit_uc(o)) * (v_tmp + value_uc(o));
+        variance_uc(o) += (var_diff + v_sq_diff) / visit_uc(o) - delta * (v_tmp + value_uc(o));
 
         _value = gamma * _value + score_uc(idx);
-        _variance *= gamma;
+        _variance *= (gamma * gamma);
     }
 }
 
