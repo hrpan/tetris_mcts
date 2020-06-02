@@ -64,12 +64,14 @@ parser.add_argument('--save', default=False, help='Save self-play episodes', act
 parser.add_argument('--save_dir', default='./data/', type=str, help='Directory for save')
 parser.add_argument('--save_file', default='data', type=str, help='Filename to save')
 parser.add_argument('--save_tree', default=False, help='Save expanded tree nodes', action='store_true')
+parser.add_argument('--tetris_randomizer', default=0, type=int, help='Queue randomizer used by Tetris (0: bag, 1: uniform)')
+parser.add_argument('--tetris_scoring', default=0, type=int, help='Scoring system used by Tetris (0: official guideline, 1: line clears)')
 args = parser.parse_args()
 
 """
 SOME INITS
 """
-env_args = ((22, 10), args.app)
+env_args = ((22, 10), args.app, args.tetris_scoring, args.tetris_randomizer)
 game = Tetris(*env_args)
 
 ngames = 0
