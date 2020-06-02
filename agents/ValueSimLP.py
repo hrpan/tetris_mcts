@@ -8,20 +8,14 @@ class ValueSimLP(ValueSim):
 
     def __init__(self, **kwargs):
 
-        super().__init__(min_visits_to_store=10, **kwargs)
-
-    def evaluate_states(self, states):
-
-        v, var = self.model.inference(states[:, None, :, :])
-
-        return np.squeeze(v, axis=1), np.squeeze(var, axis=1)
+        super().__init__(min_visits_to_store=25, **kwargs)
 
     def mcts(self, root_index, sims):
 
         child = self.arrays['child']
         score = self.arrays['score']
         games = self.game_arr
-        eval_ = self.evaluate_states
+        eval = self.model.inference
 
         if self.projection:
             state = self.obs_arrays['state']
@@ -32,7 +26,7 @@ class ValueSimLP(ValueSim):
             n_to_o = self.node_to_obs
             s_args = [root_index, child, visit, value, variance, score, n_to_o, 1]
             selection = select_trace_obs
-            mixture = True
+            mixture = False
             averaged = True
             b_args = [
                 None, visit, value, variance, n_to_o, score,
@@ -62,7 +56,8 @@ class ValueSimLP(ValueSim):
 
                 states = state[_o]
 
-                v, var = eval_(states)
+                v, var = eval(states[:, None, :, :])
+                v, var = v.ravel(), var.ravel()
             else:
                 _c = _o = []
                 v = var = np.empty(0, dtype=np.float32)
@@ -76,5 +71,5 @@ class ValueSimLP(ValueSim):
 
             #print(i, visit[n_to_o[self.root]], value[n_to_o[self.root]], variance[n_to_o[self.root]])
             #_ro = n_to_o[child[self.root]]
-            #print(visit[_ro].astype(int), value[_ro].astype(int), variance[_ro].astype(int))
+            #print(visit[_ro].astype(int), score[child[self.root]], value[_ro].astype(int), variance[_ro].astype(int))
             #input()
