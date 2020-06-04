@@ -336,12 +336,12 @@ class TreeAgent: public Agent {
         }
 
         std::vector<char> fetch_observations(const std::vector<int> indices){
-            std::vector<char> result(indices.size() * state_obs[0].size());
+            std::vector<char> result(indices.size() * bStride);
 
             int offset = 0;
             for(auto idx : indices){
                 std::copy(state_obs[idx].begin(), state_obs[idx].end(), result.begin() + offset);
-                offset += state_obs[0].size();
+                offset += bStride;
             }
             return result;
         }
@@ -397,35 +397,21 @@ class MCTSAgent: public TreeAgent {
             std::vector<int> c_nodes, c_obs;
             if(!games[trace.back()].end){
                 _expand(games[trace.back()]);
-            /*
-            if(leaf_parallelization){
-             
-            }else{
-            
-            }
-            */
                 if(evaluator_type == 0){
                     if(leaf_parallelization){
-                    /*
-                   void backup_obs(std::vector<int> &trace,
-                    std::vector<int> &_child,
-                    std::vector<int> &_obs,
-                    std::vector<float> &_value,
-                    std::vector<float> &_variance,
-                    bool mixture,
-                    bool averaged){
-                    */
                         get_unique_obs(trace.back(), c_nodes, c_obs);
-                        
+                         
                         std::vector<char> f_obs = fetch_observations(c_obs);
-
+                        
                         std::vector<size_t> shape = {c_nodes.size(), 1, 20, 10};
 
-                        py::array_t<char> observations = py::array_t<char>(shape, &f_obs[0]); 
-                        auto result = evaluator(observations).cast<std::vector<std::vector<float>>>();
+                        py::array_t<char> observations = py::array_t<char>(shape, &f_obs[0]);
                         
-                        backup_obs(trace, c_nodes, c_obs, result[0], result[1], false, true);
-       
+                        auto _result = evaluator(observations).cast<std::vector<py::object>>();
+                        std::vector<float> __val = _result[0].cast<std::vector<float>>();
+                        std::vector<float> __var = _result[1].cast<std::vector<float>>();
+                        
+                        backup_obs(trace, c_nodes, c_obs, __val, __var, false, true);
                     }else{
                     
                         std::vector<size_t> shape = {1, 1, 20, 10};
