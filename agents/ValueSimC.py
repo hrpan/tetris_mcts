@@ -8,7 +8,8 @@ def training(state, value, variance, visit, d_size, model):
     np.savez('./data/dump', states=state[:d_size], values=value[:d_size], variance=variance[:d_size], weights=visit[:d_size])
     model.train_data([state[:d_size], value[:d_size], 
                       variance[:d_size], visit[:d_size]],
-                     iters_per_val=100, batch_size=512, max_iters=50000)
+                     iters_per_val=100, batch_size=512, max_iters=50000,
+                     sample_replacement=False)
     model.training(False)
 
 class ValueSimC(OnlineMCTSAgent):
