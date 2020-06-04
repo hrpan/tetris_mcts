@@ -199,7 +199,7 @@ class Model:
         for iters in range(max_iters):
             b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement, p=p)
             batch = [b[b_idx] for b in batch_training]
-            loss = self.train(batch, weighted=False)
+            loss = self.train(batch, weighted=(not sample_replacement))
 
             loss_avg += alpha * (loss['loss'] - loss_avg)
             g_norm_avg += alpha * (loss['grad_norm'] - g_norm_avg)
