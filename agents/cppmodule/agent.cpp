@@ -2,7 +2,7 @@
 <%
 from sysconfig import get_path
 cfg['include_dirs'] = [get_path('include') + '/pyTetris/']
-cfg['compiler_args'] = ['-O3']
+cfg['compiler_args'] = ['-O3', '-fvisibility=hidden']
 setup_pybind11(cfg)
 %>
 */
@@ -128,7 +128,7 @@ class TreeAgent: public Agent {
             if(index == 0)
                 index = root;
             
-            for(int i=0;i<n_actions;++i){
+            for(size_t i=0;i<n_actions;++i){
                 int c = child[root][i];
                 if(projection){
                     int o = node_to_obs[c]; 
@@ -155,7 +155,7 @@ class TreeAgent: public Agent {
 
             float sum = std::accumulate(stats.begin(), stats.begin() + n_actions, 0);
             
-            for(int i=0;i<n_actions;++i)
+            for(size_t i=0;i<n_actions;++i)
                 result[i] = stats[i] / sum;
 
             return result;
@@ -178,7 +178,7 @@ class TreeAgent: public Agent {
 
         void _expand(Tetris &g){
             int idx = _new_node(g);
-            for(int i=0;i<n_actions;++i){
+            for(size_t i=0;i<n_actions;++i){
                 game_tmp.copy_from(g);
                 game_tmp.play(i);
                 child[idx][i] = _new_node(game_tmp);
@@ -267,7 +267,7 @@ class TreeAgent: public Agent {
             for(size_t i=0; i < to_traverse.size(); ++i){
                 auto pair = traversed.insert(to_traverse[i]);
                 if(pair.second){
-                    for(int c=0; c < n_actions; ++c){
+                    for(size_t c=0; c < n_actions; ++c){
                         size_t _c = child[*(pair.first)][c];
                         if(traversed.find(_c) == traversed.end())
                             to_traverse.push_back(_c);
@@ -350,7 +350,7 @@ class TreeAgent: public Agent {
             c.clear();
             o.clear();
 
-            for(int i=0;i<n_actions;++i){
+            for(size_t i=0;i<n_actions;++i){
                 int _c = child[index][i];
                 if(_c == 0) continue;
                 int _o = node_to_obs[_c];
@@ -595,8 +595,9 @@ class OnlineMCTSAgent: public MCTSAgent {
                     train(m_state, m_value, m_variance, m_visit, memory_index);
                     n_trains += 1;
                     memory_index = 0;
+                    std::cerr << "Training complete." << std::endl;
                 }else{
-                    std::cerr << "Not enough training data (" << memory_index << "< " << m_size << "), proceed to training." << std::endl;
+                    std::cerr << "Not enough training data (" << memory_index << "< " << m_size << "), collecting more data." << std::endl;
                 }
             }
 
