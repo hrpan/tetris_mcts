@@ -15,11 +15,11 @@ setup_pybind11(cfg)
 #include<pybind11/pybind11.h>
 #include<pybind11/numpy.h>
 #include<pybind11/stl.h>
+#include<core.h>
 #define P 919
 
 namespace py = pybind11;
 
-const size_t n_actions = 7;
 const size_t bStride = 200;
 
 namespace std{
@@ -45,7 +45,10 @@ class Agent{
     public:
         int current_episode;
         bool benchmark;
-        Agent(){}
+        Agent(bool _benchmark){
+            current_episode = 0;
+            benchmark = _benchmark;
+        }
         int play(){return -1;}
         //int play(){std::cerr << "play not implemented" << std::endl; return -1;}:
         /*
@@ -58,15 +61,11 @@ class Agent{
 
 class TreeAgent: public Agent {
     public:
-        int root;
-        int sims;
-        int max_nodes;
-        py::object env;
-        py::object env_args;
-        int min_visits;
+        int root, max_nodes;
         bool projection;
 
-        std::vector<int> child, visit, episode;
+        std::vector<std::array<int, n_actions>> child;
+        std::vector<int> visit, episode;
         std::vector<float> value, variance, score;
         std::vector<bool> end;
 
@@ -88,22 +87,17 @@ class TreeAgent: public Agent {
 
         std::vector<float> stats;
 
-        py::dict arrays, obs_arrays;
-
-        TreeAgent(int _sims, int _max_nodes, py::object _env, py::object _env_args, bool _projection, int _min_visits){
-            sims = _sims;
+        TreeAgent(int _max_nodes, bool _projection, bool _benchmark) : Agent(_benchmark) {
             max_nodes = _max_nodes;
-            env = _env;
-            env_args = _env_args;
             projection = _projection;
             
-            child.resize(max_nodes * n_actions);
-            visit.resize(max_nodes);
-            value.resize(max_nodes);
-            variance.resize(max_nodes);
-            episode.resize(max_nodes);
-            score.resize(max_nodes);
-            end.resize(max_nodes);
+            child.resize(max_nodes);
+            visit.resize(max_nodes, 0);
+            value.resize(max_nodes, 0);
+            variance.resize(max_nodes, 0);
+            episode.resize(max_nodes, 0);
+            score.resize(max_nodes, 0);
+            end.resize(max_nodes, 0);
             games.resize(max_nodes);
 
             available.reserve(max_nodes);
@@ -112,15 +106,15 @@ class TreeAgent: public Agent {
                 available.push_back(i);
             occupied.push_back(0);
 
-            stats.resize(3 * n_actions);
+            stats.resize(3 * n_actions, 0);
 
             if(projection){
-                node_to_obs.resize(max_nodes);
+                node_to_obs.resize(max_nodes, 0);
                 state_obs.resize(max_nodes);
-                visit_obs.resize(max_nodes);
-                value_obs.resize(max_nodes);
-                variance_obs.resize(max_nodes);
-                end_obs.resize(max_nodes);
+                visit_obs.resize(max_nodes, 0);
+                value_obs.resize(max_nodes, 0);
+                variance_obs.resize(max_nodes, 0);
+                end_obs.resize(max_nodes, 0);
                 
                 available_obs.reserve(max_nodes);
                 occupied_obs.reserve(max_nodes);
@@ -129,12 +123,13 @@ class TreeAgent: public Agent {
                 occupied_obs.push_back(0);
             }
         }
+
         void compute_stats(int index){
             if(index == 0)
                 index = root;
             
             for(int i=0;i<n_actions;++i){
-                int c = child[root * n_actions + i];
+                int c = child[root][i];
                 if(projection){
                     int o = node_to_obs[c]; 
                     stats[i] = visit_obs[o];
@@ -186,7 +181,7 @@ class TreeAgent: public Agent {
             for(int i=0;i<n_actions;++i){
                 game_tmp.copy_from(g);
                 game_tmp.play(i);
-                child[idx * n_actions + i] = _new_node(game_tmp);
+                child[idx][i] = _new_node(game_tmp);
             } 
         } 
 
@@ -206,6 +201,9 @@ class TreeAgent: public Agent {
                 
                 if(available.empty())
                     remove_nodes();
+
+                if(available.empty())
+                    std::cerr << "MAX_NODES EXCEEDED" << std::endl;
 
                 int idx = available.back();
                 available.pop_back();
@@ -270,7 +268,7 @@ class TreeAgent: public Agent {
                 auto pair = traversed.insert(to_traverse[i]);
                 if(pair.second){
                     for(int c=0; c < n_actions; ++c){
-                        size_t _c = child[*(pair.first) * n_actions + c];
+                        size_t _c = child[*(pair.first)][c];
                         if(traversed.find(_c) == traversed.end())
                             to_traverse.push_back(_c);
                     }
@@ -282,7 +280,7 @@ class TreeAgent: public Agent {
 
             available.resize(0);
             for(int i=0; i<max_nodes; ++i){
-                if(std::find(occupied.begin(), occupied.end(), i) == occupied.end())
+                if(traversed.find(i) == traversed.end())
                     available.push_back(i);
             }
 
@@ -297,7 +295,7 @@ class TreeAgent: public Agent {
                 occupied_obs.insert(occupied_obs.begin(), _o.begin(), _o.end());
                 available_obs.resize(0);
                 for(int i=0; i<max_nodes; ++i){
-                    if(std::find(occupied_obs.begin(), occupied_obs.end(), i) == occupied_obs.end())
+                    if(_o.find(i) == _o.end())
                         available_obs.push_back(i);
                 }
                 std::cerr << "Number of occupied observation nodes: " << occupied_obs.size() << std::endl;
@@ -310,7 +308,7 @@ class TreeAgent: public Agent {
             for(auto v : available){
                 node_index_map.erase(games[v]);
                 visit[v] = 0;
-                std::fill_n(&child[v * n_actions], n_actions, 0);
+                std::fill_n(child[v].begin(), n_actions, 0);
                 episode[v] = 0;
                 value[v] = 0;
                 variance[v] = 0;
@@ -329,27 +327,355 @@ class TreeAgent: public Agent {
             }
         }
 
-        void remove_nodes(){
-
+        virtual void remove_nodes(){
 
             std::cerr << "\nWARNING: REMOVING UNUSED NODES..." << std::endl;
             update_available();
         
             reset_arrays();         
         }
+
+        std::vector<char> fetch_observations(const std::vector<int> indices){
+            std::vector<char> result(indices.size() * state_obs[0].size());
+
+            int offset = 0;
+            for(auto idx : indices){
+                std::copy(state_obs[idx].begin(), state_obs[idx].end(), result.begin() + offset);
+                offset += state_obs[0].size();
+            }
+            return result;
+        }
+
+        void get_unique_obs(size_t index, std::vector<int> &c, std::vector<int> &o){
+            c.clear();
+            o.clear();
+
+            for(int i=0;i<n_actions;++i){
+                int _c = child[index][i];
+                if(_c == 0) continue;
+                int _o = node_to_obs[_c];
+                auto o_idx = std::find(o.begin(), o.end(), _o);
+                if(o_idx == o.end()){
+                    c.push_back(_c);
+                    o.push_back(_o);
+                }else{
+                    int idx = o_idx - o.begin();
+                    if(score[_c] > score[c[idx]])
+                        c[idx] = _c;
+                }
+            }
+        }
+};
+
+class MCTSAgent: public TreeAgent {
+    public:
+        int sims, max_nodes;
+        bool leaf_parallelization;
+        py::function evaluator;
+        int evaluator_type;
+        double gamma;
+        MCTSAgent(int _sims, int _max_nodes, bool _projection, double _gamma, bool _benchmark, py::function _eval, int _eval_type, bool _LP): TreeAgent(_max_nodes, _projection, _benchmark){
+            sims = _sims;
+            leaf_parallelization = _LP;
+            evaluator = _eval;
+            evaluator_type = _eval_type;
+            gamma = _gamma;
+        }
+
+        int play(){
+            for(int i=0;i<sims;++i)
+                mcts();
+           
+            compute_stats(root);
+            return get_action();
+        } 
+
+        void mcts(){
+            
+            std::vector<int> trace = selection_obs(1);
+
+            std::vector<int> c_nodes, c_obs;
+            if(!games[trace.back()].end){
+                _expand(games[trace.back()]);
+            /*
+            if(leaf_parallelization){
+             
+            }else{
+            
+            }
+            */
+                if(evaluator_type == 0){
+                    if(leaf_parallelization){
+                    /*
+                   void backup_obs(std::vector<int> &trace,
+                    std::vector<int> &_child,
+                    std::vector<int> &_obs,
+                    std::vector<float> &_value,
+                    std::vector<float> &_variance,
+                    bool mixture,
+                    bool averaged){
+                    */
+                        get_unique_obs(trace.back(), c_nodes, c_obs);
+                        
+                        std::vector<char> f_obs = fetch_observations(c_obs);
+
+                        std::vector<size_t> shape = {c_nodes.size(), 1, 20, 10};
+
+                        py::array_t<char> observations = py::array_t<char>(shape, &f_obs[0]); 
+                        auto result = evaluator(observations).cast<std::vector<std::vector<float>>>();
+                        
+                        backup_obs(trace, c_nodes, c_obs, result[0], result[1], false, true);
+       
+                    }else{
+                    
+                        std::vector<size_t> shape = {1, 1, 20, 10};
+                        auto observation = games[trace.back()].getState();
+                        observation.resize(shape);
+
+                        auto result = evaluator(observation).cast<std::vector<float>>();
+
+                        backup_obs_single(trace, score[trace.back()] + result[0], result[1]);
+                    }
+
+
+                }else if(evaluator_type == 1){
+                    game_tmp.copy_from(games[trace.back()]);
+                    py::object g_obj = py::cast(game_tmp);
+                    std::vector<float> result = evaluator(g_obj).cast<std::vector<float>>();
+                    float _val = result[0];
+                    float _var = result[1];
+                    backup_obs_single(trace, _val, _var); 
+                }
+            }else{
+                backup_obs_single(trace, games[trace.back()].score, 0);
+            }
+        }
+
+        std::vector<int> selection_obs(int low){
+            std::vector<int> trace;
+            int index = root;
+
+            std::vector<float> _val, _var;
+            std::vector<int> _vis, c_nodes, c_obs;
+            while(true){
+                trace.push_back(index);
+
+                get_unique_obs(index, c_nodes, c_obs);
+                
+                if(c_nodes.empty()) break;
+
+                int o = _check_low(c_obs, visit_obs, low);
+
+                if(o == 0){
+                    _vis.resize(c_nodes.size());
+                    _val.resize(c_nodes.size());
+                    _var.resize(c_nodes.size());
+                    for(size_t i=0;i<c_nodes.size(); ++i){
+                        int _o = c_obs[i], _c = c_nodes[i];
+                        _vis[i] = visit_obs[_o];
+                        _val[i] = value_obs[_o] + score[_c] - score[index];
+                        _var[i] = variance_obs[_o];
+                    }
+                    index = policy_clt(c_nodes, _vis, _val, _var);
+                }else{
+                    auto o_it = std::find(c_obs.begin(), c_obs.end(), o);
+                    index = c_nodes[o_it - c_obs.begin()];
+                }
+            }
+            return trace;
+        }
+
+        void backup_obs_single(std::vector<int> &trace, float _val, float _var){
+            for(int i=trace.size() - 1; i>=0; --i){
+                int c_idx = trace[i];
+                int o_idx = node_to_obs[c_idx];
+                _val -= score[c_idx];
+                if(visit_obs[o_idx] == 0){
+                    value_obs[o_idx] = _val;
+                    variance_obs[o_idx] = _var;    
+                }else{
+                    double delta = _val - value_obs[o_idx];
+                    value_obs[o_idx] += delta / (visit_obs[o_idx] + 1);
+                    double delta2 = _val - value_obs[o_idx];
+                    variance_obs[o_idx] += (delta * delta2 - variance_obs[o_idx]) / (visit_obs[o_idx] + 1);
+                }
+                visit_obs[o_idx] += 1;
+                _val = gamma * _val + score[c_idx];
+            }
+        }
+
+        void backup_obs_single_mixture(std::vector<int> &trace, float _val, float _var){}
+         
+        void backup_obs(std::vector<int> &trace,
+                    std::vector<int> &_child,
+                    std::vector<int> &_obs,
+                    std::vector<float> &_value,
+                    std::vector<float> &_variance,
+                    bool mixture,
+                    bool averaged){
+
+            if(_child.empty()){
+                if(mixture)
+                    backup_obs_single_mixture(trace, games[trace.back()].score, 0);
+                else
+                    backup_obs_single(trace, games[trace.back()].score, 0);
+            }else{
+                double _val_tmp, _var_tmp;
+                _val_tmp = _var_tmp = 0;
+                for(size_t i=0;i<_child.size(); ++i){
+                    int __c = _child[i];
+                    int __o = _obs[i];
+                    if(visit_obs[__o] == 0){
+                        visit_obs[__o] += 1;
+                        if(end_obs[__o]){
+                            value_obs[__o] = 0;
+                            variance_obs[__o] = 0;
+                        }else{
+                            value_obs[__o] = _value[i];
+                            variance_obs[__o] = _variance[i];
+                        }
+                    }
+                    if(averaged){
+                        _val_tmp += score[__c] + gamma * value_obs[__o];
+                        _var_tmp += variance_obs[__o];
+                    }else{
+                        if(mixture)
+                            backup_obs_single_mixture(trace, value_obs[__o] * gamma + score[__c], variance_obs[__o]);
+                        else
+                            backup_obs_single(trace, value_obs[__o] * gamma + score[__c], variance_obs[__o]);
+                    }
+                }
+                if(averaged){
+                    _val_tmp /= _child.size();
+                    _var_tmp /= _child.size();
+                    if(mixture)
+                        backup_obs_single_mixture(trace, _val_tmp, _var_tmp);
+                    else
+                        backup_obs_single(trace, _val_tmp, _var_tmp);
+                }
+                  
+            }
+        }
+        
+};
+
+
+class OnlineMCTSAgent: public MCTSAgent {
+    public:
+        bool online;
+
+        int memory_size, memory_growth_rate, memory_index;
+        int last_episode;
+        int n_trains;
+        int min_visit;
+
+        py::function train;
+        py::array_t<float> m_state, m_value, m_variance, m_visit;
+
+        OnlineMCTSAgent(int _sims, int _max_nodes, bool _online, int _memory_size, int _memory_growth_rate, int _min_visit, bool _projection, double _gamma, bool _benchmark, py::function _eval, int _eval_type, py::function _train, bool _LP): MCTSAgent(_sims, _max_nodes, _projection, _gamma, _benchmark, _eval, _eval_type, _LP){
+            memory_size = _memory_size;
+            memory_growth_rate = _memory_growth_rate;
+            memory_index = 0;
+            min_visit = _min_visit;
+            n_trains = 0;
+            last_episode = 0;
+            online = _online;
+
+            if(online){
+                m_state.resize({memory_size, 1, 20, 10});
+                m_visit.resize({memory_size, 1});
+                m_value.resize({memory_size, 1});
+                m_variance.resize({memory_size, 1});
+                train = _train;
+            }
+            
+        }
+
+        void remove_nodes(){
+
+            std::cerr << "\nWARNING: REMOVING UNUSED NODES..." << std::endl;
+            update_available();
+        
+            if(!benchmark && online){
+                if(projection){
+                    store_nodes(available_obs);
+                }else{
+                    store_nodes(available);
+                }
+
+                int m_size = std::min(n_trains * memory_growth_rate, memory_size);
+                if(memory_index >= m_size){
+                    std::cerr << "Enough training data (" << memory_index << ">= " << m_size << "), proceed to training." << std::endl;
+                    train(m_state, m_value, m_variance, m_visit, memory_index);
+                    n_trains += 1;
+                    memory_index = 0;
+                }else{
+                    std::cerr << "Not enough training data (" << memory_index << "< " << m_size << "), proceed to training." << std::endl;
+                }
+            }
+
+            reset_arrays();         
+        }
+
+        void store_nodes(std::vector<int> &avail){
+            std::cerr << "Storing unused nodes..." << std::endl;
+        
+            std::vector<float> *__val, *__var;
+            std::vector<int> *__vis;
+            std::vector<std::vector<char>> *__state;
+            std::vector<bool> *__end;
+
+            if(projection){
+                __val = &value_obs;
+                __var = &variance_obs;
+                __vis = &visit_obs;
+                __state = &state_obs;
+                __end = &end_obs;
+            }else{
+                __val = &value;
+                __var = &variance;
+                __vis = &visit;
+                __end = &end;
+            }
+
+            for(auto idx : avail){
+                if((*__vis)[idx] < min_visit || (*__end)[idx]) continue;
+
+
+                *m_visit.mutable_data(memory_index, 0) = (*__vis)[idx];
+                *m_value.mutable_data(memory_index, 0) = (*__val)[idx];
+                *m_variance.mutable_data(memory_index, 0) = (*__var)[idx];
+                if(projection){
+                    for(int c=0; c<20;++c)
+                        for(int r=0; r<10;++r)
+                            *m_state.mutable_data(memory_index, 0, c, r) = (*__state)[idx][10 * c + r];
+                    
+                }else{
+                    for(int c=0; c<20;++c)
+                        for(int r=0; r<10;++r)
+                            *m_state.mutable_data(memory_index, 0, c, r) = *games[idx].getState().data(c, r);
+                }
+                if(++memory_index == memory_size) break;
+            }
+
+        }
 };
 
 PYBIND11_MODULE(agent, m) {
     py::class_<Agent>(m, "Agent")
-        .def(py::init<>());
+        .def(py::init<const bool &>());
     py::class_<TreeAgent, Agent>(m, "TreeAgent")
         //TreeAgent(int _sims, int _max_nodes, py::object _env, py::object _env_args, bool _projection, int _min_visits)
-        .def(py::init<const int &, const int &, py::object &, py::object &, const bool &, const int &>())
-        .def_readwrite("value", &TreeAgent::value)
+        .def(py::init<const int &, const bool &, const int &>())
         .def("remove_nodes", &TreeAgent::remove_nodes)
         .def("new_node", &TreeAgent::new_node)
         .def("update_available", &TreeAgent::update_available)
         .def("update_root", &TreeAgent::update_root)
         .def("compute_stats", &TreeAgent::compute_stats)
         .def("expand", &TreeAgent::expand);
+    py::class_<MCTSAgent, TreeAgent>(m, "MCTSAgent")
+        .def(py::init<const int &, const int &, const bool &, const double &, const bool &, py::function &, const int &, const bool &>())
+        .def("play", &MCTSAgent::play);
+    py::class_<OnlineMCTSAgent, MCTSAgent>(m, "OnlineMCTSAgent")
+        .def(py::init<int &, int &, bool &, int &, int &, int &, bool &, double &, bool &, py::function &, int &, py::function &, bool&>());
 }
