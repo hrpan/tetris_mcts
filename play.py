@@ -71,7 +71,7 @@ args = parser.parse_args()
 """
 SOME INITS
 """
-env_args = ((22, 10), args.app, args.tetris_scoring, args.tetris_randomizer)
+env_args = ((20, 10), args.app, args.tetris_scoring, args.tetris_randomizer)
 game = Tetris(*env_args)
 
 ngames = 0
@@ -105,7 +105,7 @@ if args.print_board_to_file:
     board_output = open('board_output', 'wb')
 
 if args.realtime_status:
-    _board = np.memmap('./tmp/board', dtype=np.int8, mode='w+', shape=(22, 10))
+    _board = np.memmap('./tmp/board', dtype=np.int8, mode='w+', shape=(20, 10))
     _combo = np.memmap('./tmp/combo', dtype=np.int32, mode='w+', shape=(1, ))
     _score = np.memmap('./tmp/score', dtype=np.int32, mode='w+', shape=(1, ))
     _lines = np.memmap('./tmp/lines', dtype=np.int32, mode='w+', shape=(1, ))

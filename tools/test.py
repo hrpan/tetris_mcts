@@ -14,16 +14,16 @@ for p in m.model.parameters():
 
 print('Parameters: {}'.format(pars))
 
-print(m.model.value_bound.item(), m.model.variance_bound.item())
+print(m.model.out_ubound)
 #print(m.model.head.norm_out.bias)
 #print(m.model.head.norm_out.weight)
 print(m.model.head.fc_out.bias)
 #print('value mean/std: {:.3f}/{:.3f}'.format(m.model.value_mean.item(), m.model.value_std.item()))
 #print('variance mean/std: {:.3f}/{:.3f}'.format(m.model.variance_mean.item(), m.model.variance_std.item()))
-b = np.random.randint(0, 2, (18, 1, 22, 10))
+b = np.random.randint(0, 2, (18, 1, 20, 10))
 
 for i in range(18):
-    b[i,:,0:i+4,:] = 0
+    b[i,:,0:i+2,:] = 0
 b[:,:,1,5:7] = -1
 b[:,:,2,5:7] = -1
 
@@ -32,7 +32,7 @@ y = m.inference(b)
 print(y[0])
 print(y[1])
 
-b = np.random.randint(0, 2, (1000, 1, 22, 10))
+b = np.random.randint(0, 2, (1000, 1, 20, 10))
 b[:,0,0:5,:] = 0
 b_flip = np.flip(b, axis=3).copy()
 y = m.inference(b)

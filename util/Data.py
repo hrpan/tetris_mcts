@@ -13,7 +13,7 @@ def keyFile(s):
 
 class State(tables.IsDescription):
     episode        = tables.Int32Col()
-    board          = tables.Int8Col(shape=(22, 10))
+    board          = tables.Int8Col(shape=(20, 10))
     policy         = tables.Float32Col(shape=(n_actions,))
     action         = tables.Int8Col()
     combo          = tables.Int32Col()
