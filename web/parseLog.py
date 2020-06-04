@@ -22,8 +22,8 @@ class BoardParser:
 
         s = self.file.read()
 
-        if len(s) == 220:
-            self.data = np.fromstring(s, dtype=np.int8).reshape(22, 10)
+        if len(s) == 200:
+            self.data = np.fromstring(s, dtype=np.int8).reshape(20, 10)
 
         self.file.seek(0)
 
@@ -31,7 +31,7 @@ class BoardParser:
 class StatusParser:
     def __init__(self):
 
-        self.board = np.memmap('../tmp/board', mode='r', dtype=np.int8, shape=(22, 10))
+        self.board = np.memmap('../tmp/board', mode='r', dtype=np.int8, shape=(20, 10))
         self.combo = np.memmap('../tmp/combo', mode='r', dtype=np.int32, shape=(1, ))
         self.lines = np.memmap('../tmp/lines', mode='r', dtype=np.int32, shape=(1, ))
         self.score = np.memmap('../tmp/score', mode='r', dtype=np.int32, shape=(1, ))
@@ -102,7 +102,7 @@ class Parser:
                     else:
                         self.data['validation_loss_err'].append(float(d['v_loss_err']))
                     self.data['g_norm'].append(float(d['g_norm']))
-                    print(d['g_norm'])
+                    #print(d['g_norm'])
                 elif match_datasize_re:
                     d = match_datasize_re.groupdict()
                     tsize = int(d['tsize'])

@@ -142,7 +142,7 @@ colorscale = [[0, 'rgb(100, 100, 100)'],
               [1, 'rgb(255, 255, 255)']]
 fig_board = go.Figure(
     data=[
-        go.Heatmap(z=[[0] * 10] * 22, hoverinfo='none',
+        go.Heatmap(z=[[0] * 10] * 20, hoverinfo='none',
                    colorscale=colorscale, showscale=False,
                    xgap=1, ygap=1)
     ],
@@ -150,7 +150,7 @@ fig_board = go.Figure(
         plot_bgcolor=colors['background'],
         paper_bgcolor=colors['background'],
         font={'color': colors['text']},
-        height=760,
+        height=700,
         width=300,
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
