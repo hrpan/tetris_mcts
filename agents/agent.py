@@ -77,7 +77,7 @@ class TreeAgent(Agent):
         if self.projection:
             self.node_to_obs = np.zeros(self.max_nodes, dtype=np.int32)
             self.obs_arrays = {
-                    'state': np.zeros((self.max_nodes, 22, 10), dtype=np.int8),
+                    'state': np.zeros((self.max_nodes, *self.env_args[0]), dtype=np.int8),
                     'visit': np.zeros(self.max_nodes, dtype=np.int32),
                     'value': np.zeros(self.max_nodes, dtype=np.float32),
                     'variance': np.zeros(self.max_nodes, dtype=np.float32),

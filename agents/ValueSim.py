@@ -23,7 +23,7 @@ class ValueSim(TreeAgent):
             self.memory_size = memory_size
 
             self.memory = [
-                    np.zeros((memory_size, 1, 22, 10), dtype=np.float32),
+                    np.zeros((memory_size, 1, *self.env_args[0]), dtype=np.float32),
                     np.zeros((memory_size, 1), dtype=np.float32),
                     np.zeros((memory_size, 1), dtype=np.float32),
                     np.zeros((memory_size, 1), dtype=np.float32)
