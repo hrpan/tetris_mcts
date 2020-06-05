@@ -12,7 +12,7 @@ variance_bound = 1.
 
 class Net(nn.Module):
 
-    def __init__(self, input_shape=(22, 10), eps=variance_bound):
+    def __init__(self, input_shape=(20, 10), eps=variance_bound):
         super().__init__()
 
         kernel_size = 3
@@ -43,7 +43,7 @@ class Net(nn.Module):
         #self.head.fc_out.bias.data[0].fill_(1e2)
         #self.head.fc_out.bias.data[1].fill_(1e4)
 
-        self.out_ubound = nn.Parameter(torch.tensor([1e3, 1e6]), requires_grad=False)
+        self.out_ubound = nn.Parameter(torch.tensor([1e2, 1e3]), requires_grad=False)
         self.out_lbound = nn.Parameter(torch.tensor([0, eps]), requires_grad=False)
 
     def forward(self, x):
@@ -71,12 +71,10 @@ class Ensemble(nn.Module):
 
         if self.training:
             m = torch.randint(0, self.n_models-1, (1,))
-            return self.nets[m](x)
+            return self.nets[n](x)
         else:
-            results = [net(x) for net in self.nets]
-            value = torch.mean(torch.stack([r[0] for r in results]), dim=0)
-            var = torch.mean(torch.stack([r[1] for r in results]), dim=0)
-            return value, var
+            r = [n(x) for n in self.nets]
+            return torch.mean(torch.stack(r))
 
 
 class WeakGaussianLL(nn.Module):
@@ -137,8 +135,8 @@ class Model_VV(Model):
         self.model = torch.jit.script(self.model)
 
         #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-2, eps=1e-3)
-        #self.optimizer = Yogi(self.model.parameters(), lr=1e-4, eps=1e-3)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-4, momentum=0.99, nesterov=True)
+        self.optimizer = Yogi(self.model.parameters(), lr=1e-3, eps=1e-3)
+        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95, nesterov=True)
 
         self.scheduler = None
 
