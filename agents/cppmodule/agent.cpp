@@ -591,13 +591,13 @@ class OnlineMCTSAgent: public MCTSAgent {
 
                 int m_size = std::min(n_trains * memory_growth_rate, memory_size);
                 if(memory_index >= m_size){
-                    std::cerr << "Enough training data (" << memory_index << ">= " << m_size << "), proceed to training." << std::endl;
+                    std::cerr << "Enough training data (" << memory_index << " >= " << m_size << "), proceed to training." << std::endl;
                     train(m_state, m_value, m_variance, m_visit, memory_index);
                     n_trains += 1;
                     memory_index = 0;
                     std::cerr << "Training complete." << std::endl;
                 }else{
-                    std::cerr << "Not enough training data (" << memory_index << "< " << m_size << "), collecting more data." << std::endl;
+                    std::cerr << "Not enough training data (" << memory_index << " < " << m_size << "), collecting more data." << std::endl;
                 }
             }
 
