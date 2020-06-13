@@ -75,7 +75,7 @@ class Model:
             if k_std in _tmp:
                 loss_std = np.array(_tmp[k_std])
                 np.nan_to_num(loss_std, copy=False)
-                loss_std_combined = np.sqrt(np.sum((bsize - 1) * loss_std ** 2 + bsize * (loss - loss_combined) ** 2) / (d_size - 1))
+                loss_std_combined = np.sqrt(np.sum(bsize * loss_std ** 2 + bsize * (loss ** 2 - loss_combined ** 2)) / d_size)
                 result[k_std] = loss_std_combined
 
         return result
@@ -90,7 +90,7 @@ class Model:
 
         return norm ** (1/p)
 
-    def train(self, batch, grad_clip=1., g_norm_warn=1e2, weighted=False):
+    def train(self, batch, grad_clip=0., g_norm_warn=1e3, weighted=False):
 
         self.optimizer.zero_grad()
 
@@ -194,23 +194,20 @@ class Model:
             loss_val_min = float('inf')
 
         loss_avg = g_norm_avg = 0
-        alpha = 0.01
         self.training(True)
         for iters in range(max_iters):
             b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement, p=p)
             batch = [b[b_idx] for b in batch_training]
             loss = self.train(batch, weighted=(not sample_replacement))
 
-            loss_avg += alpha * (loss['loss'] - loss_avg)
-            g_norm_avg += alpha * (loss['grad_norm'] - g_norm_avg)
+            loss_avg += loss['loss']
+            g_norm_avg += loss['grad_norm']
             if (iters + 1) % iters_per_val == 0:
                 self.training(False)
                 loss_val = self.compute_loss(batch_validation)
                 self.training(True)
                 loss_val_mean, loss_val_std = loss_val['loss'], loss_val['loss_std']
                 loss_val_std /= validation_size ** 0.5
-
-                bias_coeff = 1 / (1 - (1 - alpha) ** (iters + 1))
 
                 suffix = ''
                 if early_stopping:
@@ -227,11 +224,17 @@ class Model:
                             break
 
                 print('Iteration:{:7d}  training loss:{:6.4f}  validation loss:{:6.4f}±{:6.4f}  gradient norm:{:6.3f}    {}'
-                      .format(iters+1, loss_avg * bias_coeff, loss_val_mean, loss_val_std, g_norm_avg * bias_coeff, suffix), **perr)
+                      .format(iters+1, loss_avg / iters_per_val, loss_val_mean, loss_val_std, g_norm_avg / iters_per_val, suffix), **perr)
+
+                loss_avg = g_norm_avg = 0
 
         if early_stopping:
             self.load()
+            if hasattr(self.optimizer, 'finalize'):
+                self.optimizer.finalize()
         else:
+            if hasattr(self.optimizer, 'finalize'):
+                self.optimizer.finalize()
             self.save()
 
         self.training(False)
