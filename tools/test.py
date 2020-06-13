@@ -50,6 +50,6 @@ for g in m.optimizer.param_groups:
             continue
         for k in keys:
             if k in state:
-                print('{} {:10.3e} {:10.3e} {:10.3e} {:10.3e}'.format(k, state[k].mean().item(), state[k].std().item(), state[k].min().item(), state[k].max().item()), end='    ')
+                print('{} {:10.3e} {:10.3e} {:10.3e} {:10.3e}'.format(k, state[k].mean().item(), state[k].std().item(), state[k].min().item(), state[k].max().item()), end='  ')
 
         print()
