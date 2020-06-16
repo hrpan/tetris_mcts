@@ -550,20 +550,23 @@ class OnlineMCTSAgent: public MCTSAgent {
     public:
         bool online;
 
+        int accumulation_policy;
         int memory_size, memory_growth_rate, memory_index;
-        int last_episode;
+        int episodes_per_train, last_episode;
         int n_trains;
         int min_visit;
 
         py::function train;
         py::array_t<float> m_state, m_value, m_variance, m_visit;
 
-        OnlineMCTSAgent(int _sims, int _max_nodes, bool _online, int _memory_size, int _memory_growth_rate, int _min_visit, bool _projection, double _gamma, bool _benchmark, py::function _eval, int _eval_type, py::function _train, bool _LP): MCTSAgent(_sims, _max_nodes, _projection, _gamma, _benchmark, _eval, _eval_type, _LP){
+        OnlineMCTSAgent(int _sims, int _max_nodes, bool _online, int _accumulation_policy, int _memory_size, int _episodes_per_train, int _memory_growth_rate, int _min_visit, bool _projection, double _gamma, bool _benchmark, py::function _eval, int _eval_type, py::function _train, bool _LP): MCTSAgent(_sims, _max_nodes, _projection, _gamma, _benchmark, _eval, _eval_type, _LP){
+            accumulation_policy = _accumulation_policy;
             memory_size = _memory_size;
             memory_growth_rate = _memory_growth_rate;
             memory_index = 0;
             min_visit = _min_visit;
             n_trains = 0;
+            episodes_per_train = _episodes_per_train;
             last_episode = 0;
             online = _online;
 
@@ -574,7 +577,7 @@ class OnlineMCTSAgent: public MCTSAgent {
                 m_variance.resize({memory_size, 1});
                 train = _train;
             }
-            
+
         }
 
         void remove_nodes(){
@@ -589,16 +592,37 @@ class OnlineMCTSAgent: public MCTSAgent {
                     store_nodes(available);
                 }
 
-                int m_size = std::min(n_trains * memory_growth_rate, memory_size);
-                if(memory_index >= m_size){
-                    std::cerr << "Enough training data (" << memory_index << " >= " << m_size << "), proceed to training." << std::endl;
-                    train(m_state, m_value, m_variance, m_visit, memory_index);
-                    n_trains += 1;
-                    memory_index = 0;
-                    std::cerr << "Training complete." << std::endl;
-                }else{
-                    std::cerr << "Not enough training data (" << memory_index << " < " << m_size << "), collecting more data." << std::endl;
+                std::cerr << "Memory usage: " << memory_index << " / " << memory_size << std::endl;
+
+                bool pass = false;
+                if(accumulation_policy == 0){
+                    int diff = current_episode - last_episode;
+                    pass = diff > episodes_per_train || memory_index >= memory_size;
+                    if(diff > episodes_per_train){
+                        std::cerr << "Enough episodes (" << diff << " >= " << episodes_per_train << "), proceed to training." << std::endl;
+                    }else if(memory_index >= memory_size){
+                        std::cerr << "Memory limit exceeded, proceed to training." << std::endl;
+                    }else{
+                        std::cerr << "Not enough episodes (" << diff << " >= " << episodes_per_train << "), collecting more episodes." << std::endl;
+                    }
+                }else if(accumulation_policy == 1){
+                    int m_size = std::min(n_trains * memory_growth_rate, memory_size);
+                    pass = memory_index >= m_size;
+                    if(pass){
+                        std::cerr << "Enough training data (" << memory_index << " >= " << m_size << "), proceed to training." << std::endl;
+                    }else{
+                        std::cerr << "Not enough training data (" << memory_index << " < " << m_size << "), collecting more data." << std::endl;
+                    }
                 }
+
+                if(pass){
+                    train(m_state, m_value, m_variance, m_visit, memory_index);
+                    ++n_trains;
+                    memory_index = 0;
+                    last_episode = current_episode;
+                    std::cerr << "Training complete." << std::endl;
+                }
+
             }
 
             reset_arrays();         
@@ -664,5 +688,9 @@ PYBIND11_MODULE(agent, m) {
         .def(py::init<const int &, const int &, const bool &, const double &, const bool &, py::function &, const int &, const bool &>())
         .def("play", &MCTSAgent::play);
     py::class_<OnlineMCTSAgent, MCTSAgent>(m, "OnlineMCTSAgent")
-        .def(py::init<int &, int &, bool &, int &, int &, int &, bool &, double &, bool &, py::function &, int &, py::function &, bool&>());
+        .def(py::init<int &, int &, bool &, int &, int &, int &, int &, int &, bool &, double &, bool &, py::function &, int &, py::function &, bool&>(),
+             py::arg("sims") = 100, py::arg("max_nodes") = 100000, py::arg("online") = true, py::arg("accumulation_policy") = 0,
+             py::arg("memory_size") = 500000, py::arg("episodes_per_train") = 25, py::arg("memory_growth_rate") = 5000,
+             py::arg("min_visit") = 25, py::arg("projection") = true, py::arg("gamma") = 0.999, py::arg("benchmark") = false,
+             py::arg("evaluator") = py::none(), py::arg("evaluation_type") = 0, py::arg("train") = py::none(), py::arg("LP") = true);
 }
