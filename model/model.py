@@ -170,8 +170,9 @@ class Model:
             print('Checkpoint not found, using default model', flush=True)
 
     def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
-                   sample_replacement=True, early_stopping=True, early_stopping_patience=10,
-                   early_stopping_threshold=1., shuffle=False, max_iters=100000):
+                   sample_replacement=True, oversampling=False, early_stopping=True,
+                   early_stopping_patience=10, early_stopping_threshold=1.,
+                   shuffle=False, max_iters=100000):
 
         data_size = len(data[0])
         validation_size = int(data_size * validation_fraction)
@@ -186,7 +187,11 @@ class Model:
         batch_training = [d[:-validation_size] for d in data]
         batch_validation = [d[-validation_size:] for d in data]
 
-        p = np.squeeze(batch_training[-1] / batch_training[-1].sum())
+        if oversampling:
+            p = np.squeeze(batch_training[-1] / batch_training[-1].sum())
+        else:
+            p = None
+
         print('Training data size: {}    Validation data size: {}'.format(data_size-validation_size, validation_size), **perr)
 
         if early_stopping:
@@ -198,7 +203,7 @@ class Model:
         for iters in range(max_iters):
             b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement, p=p)
             batch = [b[b_idx] for b in batch_training]
-            loss = self.train(batch, weighted=(not sample_replacement))
+            loss = self.train(batch, weighted=not oversampling)
 
             loss_avg += loss['loss']
             g_norm_avg += loss['grad_norm']
