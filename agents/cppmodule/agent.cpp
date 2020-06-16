@@ -11,16 +11,21 @@ setup_pybind11(cfg)
 #include<deque>
 #include<unordered_map>
 #include<iostream>
+#include<numeric>
+#include<random>
 #include<pyTetris.h>
 #include<pybind11/pybind11.h>
 #include<pybind11/numpy.h>
 #include<pybind11/stl.h>
 #include<core.h>
 #define P 919
+#define SEED 123
 
 namespace py = pybind11;
 
 const size_t bStride = 200;
+
+std::mt19937 mt(SEED);
 
 namespace std{
     template<>
@@ -40,6 +45,24 @@ namespace std{
         }
     };
 }
+
+class IntSampler{
+    public:
+        std::vector<int> indices;
+
+        IntSampler(int n){
+            indices.resize(n);
+            std::iota(indices.begin(), indices.end(), 0);
+        }
+
+        std::vector<int> sample(int n){
+            std::shuffle(indices.begin(), indices.end(), mt);
+            std::vector<int> result;
+            result.resize(n);
+            std::copy_n(indices.begin(), n, result.begin());
+            return result;
+        }
+};
 
 class Agent{
     public:
@@ -597,13 +620,15 @@ class OnlineMCTSAgent: public MCTSAgent {
                 bool pass = false;
                 if(accumulation_policy == 0){
                     int diff = current_episode - last_episode;
-                    pass = diff > episodes_per_train || memory_index >= memory_size;
-                    if(diff > episodes_per_train){
+                    pass = diff >= episodes_per_train;
+                    if(pass){
                         std::cerr << "Enough episodes (" << diff << " >= " << episodes_per_train << "), proceed to training." << std::endl;
-                    }else if(memory_index >= memory_size){
-                        std::cerr << "Memory limit exceeded, proceed to training." << std::endl;
                     }else{
-                        std::cerr << "Not enough episodes (" << diff << " >= " << episodes_per_train << "), collecting more episodes." << std::endl;
+                        if(memory_index >= memory_size){
+                            std::cerr << "Memory limit exceeded, trimming memory." << std::endl;
+                            random_trimming(0.1);
+                        }
+                        std::cerr << "Not enough episodes (" << diff << " < " << episodes_per_train << "), collecting more episodes." << std::endl;
                     }
                 }else if(accumulation_policy == 1){
                     int m_size = std::min(n_trains * memory_growth_rate, memory_size);
@@ -626,6 +651,29 @@ class OnlineMCTSAgent: public MCTSAgent {
             }
 
             reset_arrays();         
+        }
+
+        void random_trimming(double fraction){
+            static IntSampler sampler(memory_size);
+            auto indices = sampler.sample(int(memory_size * fraction));
+            std::sort(indices.begin(), indices.end());
+
+            auto _vis = m_visit.mutable_unchecked<2>();
+            auto _val = m_value.mutable_unchecked<2>();
+            auto _var = m_variance.mutable_unchecked<2>();
+            auto _state = m_state.mutable_unchecked<4>();
+
+            for(auto idx=indices.rbegin(); idx < indices.rend(); ++idx){
+                for(int start=*idx; start<memory_size-1;++start){
+                    _vis(start, 0) = _vis(start + 1, 0);
+                    _val(start, 0) = _val(start + 1, 0);
+                    _var(start, 0) = _var(start + 1, 0);
+                    for(int c=0;c<_state.shape(2);++c)
+                        for(int r=0;r<_state.shape(3);++r)
+                            _state(start, 0, c, r) = _state(start+1, 0, c, r);
+                }
+                --memory_index;
+            }
         }
 
         void store_nodes(std::vector<int> &avail){
