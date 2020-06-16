@@ -197,7 +197,7 @@ app.layout = html.Div([
                         html.Li(children=html.H4(children=['Score: ', html.Data(id='live-score', children=0)])),
                         html.Li(children=html.H4(children=['Single/Double/Triple/Tetris: ', html.Data(id='live-line_stats', children='0/0/0/0')])),
                         html.Li(children=html.H4(children=['Node removals since last game: ', html.Data(id='live-rmslg', children=0)])),
-                        html.Li(children=html.H4(children=['Queue usage: ', html.Data(id='live-queue', children='0/0')])),
+                        html.Li(children=html.H4(children=['Memory usage: ', html.Data(id='live-queue', children='0/0')])),
                     ])
                 ], className='status'),
             ], className='box'),

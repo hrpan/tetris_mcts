@@ -65,8 +65,7 @@ class Parser:
                    'gradient norm:\s*(?P<g_norm>\d*\.\d*)'
         datasize_re = 'Training data size:\s*(?P<tsize>\d*)\s*' \
                       'Validation data size:\s*(?P<vsize>\d*)'
-        queue_re = 'Not enough training data \((?P<filled>\d*) <' \
-                   ' (?P<size>\d*)\).*'
+        queue_re = 'Memory usage: (?P<filled>\d*) / (?P<size>\d*).*'
 
         self.data = defaultdict(list)
         size = 0
