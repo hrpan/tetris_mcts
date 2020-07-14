@@ -50,15 +50,19 @@ class Model:
 
         self.training(training)
 
-    def compute_loss(self, batch, chunksize=1024):
+    def compute_loss(self, batch, weighted, chunksize=1024):
 
         _tmp = defaultdict(list)
-        d_size = len(batch[0])
+        d_size = 0.
         with torch.no_grad():
-            for c in range(0, d_size, chunksize):
+            for c in range(0, len(batch[0]), chunksize):
                 b = [d[c:c+chunksize] for d in batch]
-                loss = self._loss(b, weighted=True)
-                _tmp['bsize'].append(len(b[0]))
+                loss = self._loss(b, weighted=weighted)
+                if weighted:
+                    _tmp['bsize'].append(np.sum(b[-1]))
+                else:
+                    _tmp['bsize'].append(len(b[0]))
+                d_size += _tmp['bsize'][-1]
                 for k, v in loss.items():
                     _tmp[k].append(v.item())
 
@@ -170,8 +174,8 @@ class Model:
             print('Checkpoint not found, using default model', flush=True)
 
     def train_data(self, data, batch_size=128, iters_per_val=500, validation_fraction=0.1,
-                   sample_replacement=True, oversampling=False, early_stopping=True,
-                   early_stopping_patience=10, early_stopping_threshold=1.,
+                   sample_replacement=True, oversampling=False, weighted=True,
+                   early_stopping=True, early_stopping_patience=10, early_stopping_threshold=1.,
                    shuffle=False, max_iters=100000):
 
         data_size = len(data[0])
@@ -203,13 +207,13 @@ class Model:
         for iters in range(max_iters):
             b_idx = np.random.choice(data_size-validation_size, size=batch_size, replace=sample_replacement, p=p)
             batch = [b[b_idx] for b in batch_training]
-            loss = self.train(batch, weighted=not oversampling)
+            loss = self.train(batch, weighted=weighted)
 
             loss_avg += loss['loss']
             g_norm_avg += loss['grad_norm']
             if (iters + 1) % iters_per_val == 0:
                 self.training(False)
-                loss_val = self.compute_loss(batch_validation)
+                loss_val = self.compute_loss(batch_validation, weighted=weighted)
                 self.training(True)
                 loss_val_mean, loss_val_std = loss_val['loss'], loss_val['loss_std']
                 loss_val_std /= validation_size ** 0.5
