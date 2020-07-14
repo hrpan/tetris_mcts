@@ -13,6 +13,7 @@ setup_pybind11(cfg)
 #include<iostream>
 #include<numeric>
 #include<random>
+#include<iterator>
 #include<pyTetris.h>
 #include<pybind11/pybind11.h>
 #include<pybind11/numpy.h>
@@ -26,6 +27,7 @@ namespace py = pybind11;
 const size_t bStride = 200;
 
 std::mt19937 mt(SEED);
+std::uniform_real_distribution<double> unif(0., 1.);
 
 namespace std{
     template<>
@@ -57,10 +59,7 @@ class IntSampler{
 
         std::vector<int> sample(int n){
             std::shuffle(indices.begin(), indices.end(), mt);
-            std::vector<int> result;
-            result.resize(n);
-            std::copy_n(indices.begin(), n, result.begin());
-            return result;
+            return std::vector<int>(indices.begin(), indices.begin() + n);
         }
 };
 
@@ -575,22 +574,36 @@ class OnlineMCTSAgent: public MCTSAgent {
 
         int accumulation_policy;
         int memory_size, memory_growth_rate, memory_index;
-        int episodes_per_train, last_episode;
+        std::deque<int> nodes_per_episode;
+        int accumulated_nodes, last_accumulation_episode;
+        int episodes_per_train, last_training_episode;
         int n_trains;
         int min_visit;
+
+        double memory_drop_prob;
 
         py::function train;
         py::array_t<float> m_state, m_value, m_variance, m_visit;
 
         OnlineMCTSAgent(int _sims, int _max_nodes, bool _online, int _accumulation_policy, int _memory_size, int _episodes_per_train, int _memory_growth_rate, int _min_visit, bool _projection, double _gamma, bool _benchmark, py::function _eval, int _eval_type, py::function _train, bool _LP): MCTSAgent(_sims, _max_nodes, _projection, _gamma, _benchmark, _eval, _eval_type, _LP){
             accumulation_policy = _accumulation_policy;
+
             memory_size = _memory_size;
-            memory_growth_rate = _memory_growth_rate;
             memory_index = 0;
+
+            std::deque<int> nodes_per_episode;
+            accumulated_nodes = 0;
+            last_accumulation_episode = 0;
+            memory_drop_prob = 0;
+
             min_visit = _min_visit;
+
+            memory_growth_rate = _memory_growth_rate;
             n_trains = 0;
+
             episodes_per_train = _episodes_per_train;
-            last_episode = 0;
+            last_training_episode = 0;
+
             online = _online;
 
             if(online){
@@ -609,6 +622,7 @@ class OnlineMCTSAgent: public MCTSAgent {
             update_available();
         
             if(!benchmark && online){
+               
                 if(projection){
                     store_nodes(available_obs);
                 }else{
@@ -619,18 +633,47 @@ class OnlineMCTSAgent: public MCTSAgent {
 
                 bool pass = false;
                 if(accumulation_policy == 0){
-                    int diff = current_episode - last_episode;
+                    if(last_accumulation_episode != current_episode){
+                        nodes_per_episode.push_back(accumulated_nodes);
+                        if(nodes_per_episode.size() > episodes_per_train)
+                            nodes_per_episode.pop_front();
+                        int sum = std::accumulate(nodes_per_episode.begin(), nodes_per_episode.end(), 0);
+                        memory_drop_prob = std::max(0., 1. - double(memory_size) / sum);
+                        
+                        accumulated_nodes = 0;
+                        last_accumulation_episode = current_episode;
+
+                        std::cerr << "Average nodes stored per episode: " << sum / nodes_per_episode.size()
+                            << "    Memory dropping probability: " << memory_drop_prob << std::endl;
+                    }
+
+                    int diff = current_episode - last_training_episode;
                     pass = diff >= episodes_per_train;
                     if(pass){
                         std::cerr << "Enough episodes (" << diff << " >= " << episodes_per_train << "), proceed to training." << std::endl;
                     }else{
                         if(memory_index >= memory_size){
                             std::cerr << "Memory limit exceeded, trimming memory." << std::endl;
-                            random_trimming(0.1);
+                            random_trimming(0.01);
+                            std::cerr << "Memory usage: " << memory_index << " / " << memory_size << std::endl;
                         }
                         std::cerr << "Not enough episodes (" << diff << " < " << episodes_per_train << "), collecting more episodes." << std::endl;
                     }
                 }else if(accumulation_policy == 1){
+                    int diff = current_episode - last_training_episode;
+                    pass = diff >= episodes_per_train;
+                    if(pass){
+                        std::cerr << "Enough episodes (" << diff << " >= " << episodes_per_train << "), proceed to training." << std::endl;
+                    }else{
+                        if(memory_index >= memory_size){
+                            double percentile = 0.01;
+                            std::cerr << "Memory limit exceeded, trimming memory." << std::endl;
+                            weighted_trimming(percentile);
+                            std::cerr << "Memory usage: " << memory_index << " / " << memory_size << std::endl;
+                        }
+                        std::cerr << "Not enough episodes (" << diff << " < " << episodes_per_train << "), collecting more episodes." << std::endl;
+                    }
+                }else if(accumulation_policy == 2){
                     int m_size = std::min(n_trains * memory_growth_rate, memory_size);
                     pass = memory_index >= m_size;
                     if(pass){
@@ -638,13 +681,14 @@ class OnlineMCTSAgent: public MCTSAgent {
                     }else{
                         std::cerr << "Not enough training data (" << memory_index << " < " << m_size << "), collecting more data." << std::endl;
                     }
+ 
                 }
 
                 if(pass){
                     train(m_state, m_value, m_variance, m_visit, memory_index);
                     ++n_trains;
                     memory_index = 0;
-                    last_episode = current_episode;
+                    last_training_episode = current_episode;
                     std::cerr << "Training complete." << std::endl;
                 }
 
@@ -653,9 +697,50 @@ class OnlineMCTSAgent: public MCTSAgent {
             reset_arrays();         
         }
 
+        void weighted_trimming(double percentile){
+            std::vector<int> weights;
+            weights.resize(memory_size);
+
+            auto _vis = m_visit.mutable_unchecked<2>();
+            auto _val = m_value.mutable_unchecked<2>();
+            auto _var = m_variance.mutable_unchecked<2>();
+            auto _state = m_state.mutable_unchecked<4>();
+
+            for(int i=0;i<memory_size;++i)
+                weights[i] = _vis(i, 0);
+            
+            std::sort(weights.begin(), weights.end());
+
+            int threshold = weights[int(memory_size * percentile)];
+
+            std::cerr << "Trimming memory with threshold " << threshold << "." << std::endl;
+
+            int idx_fill = -1;
+            for(int i=0;i<memory_size;++i){
+                if(_vis(i, 0) <= threshold){
+                    idx_fill = i;  
+                    break;
+                }
+            }
+
+            for(int i=idx_fill+1;i<memory_size;++i){
+                if(_vis(i, 0) <= threshold){
+                    --memory_index;
+                    continue;
+                }
+                _vis(idx_fill, 0) = _vis(i, 0);
+                _val(idx_fill, 0) = _val(i, 0);
+                _var(idx_fill, 0) = _var(i, 0);
+                for(int c=0;c<_state.shape(2);++c)
+                    for(int r=0;r<_state.shape(3);++r)
+                        _state(idx_fill, 0, c, r) = _state(i, 0, c, r);
+                ++idx_fill;
+            }
+        }
+
         void random_trimming(double fraction){
             static IntSampler sampler(memory_size);
-            auto indices = sampler.sample(int(memory_size * fraction));
+            std::vector<int> indices = sampler.sample(int(memory_size * fraction));
             std::sort(indices.begin(), indices.end());
 
             auto _vis = m_visit.mutable_unchecked<2>();
@@ -663,17 +748,20 @@ class OnlineMCTSAgent: public MCTSAgent {
             auto _var = m_variance.mutable_unchecked<2>();
             auto _state = m_state.mutable_unchecked<4>();
 
-            for(auto idx=indices.rbegin(); idx < indices.rend(); ++idx){
-                for(int start=*idx; start<memory_size-1;++start){
-                    _vis(start, 0) = _vis(start + 1, 0);
-                    _val(start, 0) = _val(start + 1, 0);
-                    _var(start, 0) = _var(start + 1, 0);
+            int idx_fill = indices.front();
+            for(auto it=indices.begin(); it!=indices.end(); ++it){
+                int end = (it + 1) == indices.end()? memory_size : *(it+1);
+                for(int start=*it+1; start < end; ++start){
+                    _vis(idx_fill, 0) = _vis(start, 0);
+                    _val(idx_fill, 0) = _val(start, 0);
+                    _var(idx_fill, 0) = _var(start, 0);
                     for(int c=0;c<_state.shape(2);++c)
                         for(int r=0;r<_state.shape(3);++r)
-                            _state(start, 0, c, r) = _state(start+1, 0, c, r);
+                            _state(idx_fill, 0, c, r) = _state(start, 0, c, r);
+                    ++idx_fill;
                 }
-                --memory_index;
             }
+            memory_index -= indices.size();
         }
 
         void store_nodes(std::vector<int> &avail){
@@ -700,18 +788,19 @@ class OnlineMCTSAgent: public MCTSAgent {
             for(auto idx : avail){
                 if((*__vis)[idx] < min_visit || (*__end)[idx]) continue;
 
+                ++accumulated_nodes;
+                if(accumulation_policy == 0 && unif(mt) < memory_drop_prob) continue;
 
                 *m_visit.mutable_data(memory_index, 0) = (*__vis)[idx];
                 *m_value.mutable_data(memory_index, 0) = (*__val)[idx];
                 *m_variance.mutable_data(memory_index, 0) = (*__var)[idx];
                 if(projection){
-                    for(int c=0; c<20;++c)
-                        for(int r=0; r<10;++r)
-                            *m_state.mutable_data(memory_index, 0, c, r) = (*__state)[idx][10 * c + r];
-                    
+                    for(int c=0;c<m_state.shape(2);++c)
+                        for(int r=0;r<m_state.shape(3);++r)
+                            *m_state.mutable_data(memory_index, 0, c, r) = (*__state)[idx][m_state.shape(3) * c + r];
                 }else{
-                    for(int c=0; c<20;++c)
-                        for(int r=0; r<10;++r)
+                    for(int c=0;c<m_state.shape(2);++c)
+                        for(int r=0;r<m_state.shape(3);++r)
                             *m_state.mutable_data(memory_index, 0, c, r) = *games[idx].getState().data(c, r);
                 }
                 if(++memory_index == memory_size) break;
