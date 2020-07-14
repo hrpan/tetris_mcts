@@ -53,8 +53,9 @@ parser.add_argument('--gamma', default=0.9, type=float, help='Discount factor')
 parser.add_argument('--gui', default=False, help='A simple GUI', action='store_true')
 parser.add_argument('--interactive', default=False, help='Text interactive interface', action='store_true')
 parser.add_argument('--mcts_const', default=5.0, type=float, help='PUCT constant')
-parser.add_argument('--mcts_sims', default=500, type=int, help='Number of MCTS sims')
+parser.add_argument('--mcts_sims', default=50, type=int, help='Number of MCTS sims')
 parser.add_argument('--mcts_tau', default=1.0, type=float, help='Temperature constant')
+parser.add_argument('--min_visit', default=40, type=int, help='Minimum visits for node storage')
 parser.add_argument('--ngames', default=50, type=int, help='Number of episodes to play')
 parser.add_argument('--online', default=False, help='Online agent training', action='store_true')
 parser.add_argument('--printboard', default=False, help='Print board', action='store_true')
@@ -84,7 +85,8 @@ if args.agent_type:
             env=Tetris,
             env_args=env_args,
             benchmark=args.benchmark,
-            online=args.online)
+            online=args.online,
+            min_visit=args.min_visit)
     agent = Agent(**agent_args)
     agent.update_root(game)
 else:
