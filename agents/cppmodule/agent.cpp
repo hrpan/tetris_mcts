@@ -674,6 +674,16 @@ class OnlineMCTSAgent: public MCTSAgent {
                         std::cerr << "Not enough episodes (" << diff << " < " << episodes_per_train << "), collecting more episodes." << std::endl;
                     }
                 }else if(accumulation_policy == 2){
+                    int diff = current_episode - last_training_episode;
+                    pass = diff >= episodes_per_train || memory_index >= memory_size;
+                    if(diff >= episodes_per_train){
+                        std::cerr << "Enough episodes (" << diff << " >= " << episodes_per_train << "), proceed to training." << std::endl;
+                    }else if(memory_index >= memory_size){
+                        std::cerr << "Memory limit exceeded (" << memory_index << " >= " << m_size << "), proceed to training." << std::endl;
+                    }else{
+                        std::cerr << "Not enough episodes (" << diff << " < " << episodes_per_train << "), collecting more episodes." << std::endl;
+                    }
+                }else if(accumulation_policy == 3){
                     int m_size = std::min(n_trains * memory_growth_rate, memory_size);
                     pass = memory_index >= m_size;
                     if(pass){
