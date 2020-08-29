@@ -130,7 +130,7 @@ class Model_VV(Model):
     def _init_model(self):
 
         self.model = Net()
-        if self.use_cuda:
+        if self.use_cuda and torch.cuda.is_available():
             self.model = self.model.cuda()
         self.model = torch.jit.script(self.model)
 
