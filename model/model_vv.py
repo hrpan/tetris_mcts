@@ -7,7 +7,7 @@ from collections import defaultdict, OrderedDict
 from model.model import convOutShape, Model
 from model.yogi import Yogi
 
-variance_bound = 1.
+variance_bound = 1e-1
 
 
 class Net(nn.Module):
@@ -20,28 +20,27 @@ class Net(nn.Module):
         filters = 32
         bias = True
 
-        self.activation = nn.LeakyReLU(inplace=True)
-        #self.activation = nn.ReLU(inplace=True)
+        self.activation = nn.ReLU(inplace=True)
 
         _shape = convOutShape(input_shape, kernel_size, stride)
         _shape = convOutShape(_shape, kernel_size, stride)
+        _shape = convOutShape(_shape, kernel_size, stride)
         flat_in = _shape[0] * _shape[1] * filters
 
-        n_fc = 128
+        n_fc = 256
         self.head = nn.Sequential(OrderedDict([
                 ('conv1', nn.Conv2d(1, filters, kernel_size, stride, bias=bias)),
                 ('act1', self.activation),
                 ('conv2', nn.Conv2d(filters, filters, kernel_size, stride, bias=bias)),
                 ('act2', self.activation),
+                ('conv3', nn.Conv2d(filters, filters, kernel_size, stride, bias=bias)),
+                ('act3', self.activation),
                 ('flatten', nn.Flatten()),
                 ('fc1', nn.Linear(flat_in, n_fc)),
                 ('fc_act1', self.activation),
                 ('fc_out', nn.Linear(n_fc, 2)),
                 ('act_out', nn.Sigmoid()),
             ]))
-
-        #self.head.fc_out.bias.data[0].fill_(1e2)
-        #self.head.fc_out.bias.data[1].fill_(1e4)
 
         self.out_ubound = nn.Parameter(torch.tensor([1e2, 1e3]), requires_grad=False)
         self.out_lbound = nn.Parameter(torch.tensor([0, eps]), requires_grad=False)
@@ -50,10 +49,6 @@ class Net(nn.Module):
 
         x = self.head(x)
         x = x * self.out_ubound + self.out_lbound
-        #variance = variance.exp().add(self.eps)
-        #variance = variance.add(self.eps)
-        #variance = variance.pow(2).add(self.eps)
-        #variance = F.softplus(variance).add(self.eps)
         return x
 
 
@@ -134,9 +129,7 @@ class Model_VV(Model):
             self.model = self.model.cuda()
         self.model = torch.jit.script(self.model)
 
-        #self.optimizer = optim.Adam(self.model.parameters(), lr=1e-2, eps=1e-3)
-        self.optimizer = Yogi(self.model.parameters(), lr=1e-3, eps=1e-3)
-        #self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.95, nesterov=True)
+        self.optimizer = Yogi(self.model.parameters(), lr=1e-3, eps=1e-3, weight_decay=1e-3)
 
         self.scheduler = None
 
@@ -151,12 +144,12 @@ class Model_VV(Model):
         _v, _var = self.model(state).split(1, dim=1)
         if self.loss_type == 'mle' or self.loss_type == 'kldiv':
             if weighted:
-                std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
+                std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value), unbiased=False)
             else:
-                std, mean = torch.std_mean(self.l_func(_var, _v, variance, value))
+                std, mean = torch.std_mean(self.l_func(_var, _v, variance, value), unbiased=False)
             return defaultdict(float, loss=mean, loss_std=std)
         elif self.loss_type == 'mle_approx':
-            std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value))
+            std, mean = torch.std_mean(weight * self.l_func(_var, _v, variance, value), unbiased=False)
             return defaultdict(float, loss=mean, loss_std=std)
         else:
             loss_v = self.l_func(_v, value)
@@ -233,7 +226,7 @@ class Model_VV(Model):
 
     def train_data(self, data, **kwargs):
         d_bound = torch.tensor([data[1].max(), data[2].max()], device=self.device)
-        self.model.out_ubound = torch.max(self.model.out_ubound, d_bound)
+        self.model.out_ubound = d_bound
 
         super().train_data(data, **kwargs)
 
