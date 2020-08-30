@@ -15,7 +15,7 @@ def training(state, value, variance, visit, d_size, model):
 class ValueSimC(OnlineMCTSAgent):
 
     def __init__(
-            self, sims=100, max_nodes=100000, online=False, accumulation_policy=0, memory_size=500000, episodes_per_train=25,
+            self, sims=100, max_nodes=100000, online=False, accumulation_policy=1, memory_size=10000000, episodes_per_train=25,
             memory_growth_rate=5000, min_visit=40, projection=True, gamma=0.999, benchmark=False, leaf_parallel=True, **kwargs):
 
         self.model = Model()
