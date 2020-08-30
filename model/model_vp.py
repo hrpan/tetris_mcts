@@ -3,7 +3,6 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-import torch_optimizer as toptim
 from collections import defaultdict, OrderedDict
 from model.model import convOutShape, Model, n_actions
 
