@@ -109,7 +109,7 @@ class Model:
         self.training = training
 
         self.model = Net()
-        if self.use_cuda:
+        if self.use_cuda and torch.cuda.is_available():
             self.model = self.model.cuda()       
         self.mc_iters = mc_iters
         #reparam = [{'params': params} for name, params in self.model.named_parameters()]
@@ -146,7 +146,7 @@ class Model:
             policy = torch.from_numpy(batch[3])
             weight = torch.from_numpy(batch[4])
 
-        if self.use_cuda:
+        if self.use_cuda and torch.cuda.is_available():
             state = state.cuda()
             value = value.cuda()
             variance = variance.cuda()
@@ -217,7 +217,7 @@ class Model:
         self.model.eval() 
 
         b = torch.from_numpy(batch).float()
-        if self.use_cuda:
+        if self.use_cuda and torch.cuda.is_available():
             b = b.cuda()
 
         with torch.no_grad():
@@ -234,7 +234,7 @@ class Model:
 
         #state = convert(batch)
         b = torch.from_numpy(batch).float()
-        if self.use_cuda:
+        if self.use_cuda and torch.cuda.is_available():
             b = b.cuda()
 
         with torch.no_grad():
