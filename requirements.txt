@@ -1,5 +1,5 @@
 torch==1.4.0a0+f669214
-numpy==1.17.2
+numpy==1.22.0
 dash_html_components==1.0.1
 matplotlib==3.1.1
 dash==1.4.1
