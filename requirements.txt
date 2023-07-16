@@ -1,4 +1,4 @@
-torch==1.4.0a0+f669214
+torch==1.13.1
 numpy==1.17.2
 dash_html_components==1.0.1
 matplotlib==3.1.1
